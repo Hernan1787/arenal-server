@@ -11,9 +11,11 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
-    "test": "vitest run",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:all": "vitest run",
     "test:watch": "vitest",
-    "contracts:generate": "pnpm --filter @arenal/contracts generate",
+    "contracts:generate": "pnpm --filter @arenal/contracts generate && pnpm --filter @arenal/server openapi",
     "contracts:check": "pnpm contracts:generate && git diff --exit-code -- packages/contracts/generated",
     "dev": "pnpm --filter @arenal/server dev",
     "prepare": "node scripts/setup-hooks.mjs"

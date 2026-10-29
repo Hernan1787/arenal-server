@@ -1,8 +1,21 @@
 import { randomUUID } from 'node:crypto';
 import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyError, type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import {
+  hasZodFastifySchemaValidationErrors,
+  isResponseSerializationError,
+  jsonSchemaTransform,
+  jsonSchemaTransformObject,
+  serializerCompiler,
+  validatorCompiler,
+} from 'fastify-type-provider-zod';
+import { AppError } from './errors.js';
 import { REDACT_PATHS, serializeRequest } from './http/logging.js';
 import { buildProblem, sendProblem } from './http/problem.js';
+import { registerApiRoutes, type ApiServices } from './http/routes.js';
 
 /** Una dependencia que `/health/ready` revisa (Postgres, Redis). Debe fallar lanzando un error. */
 export type HealthCheck = () => Promise<void>;
@@ -18,6 +31,8 @@ export interface AppOptions {
   readonly lifecycle: Lifecycle;
   readonly logger?: FastifyServerOptions['logger'];
   readonly checkTimeoutMs?: number;
+  /** Servicios de la API v1. Sin ellos la app solo expone las sondas de salud. */
+  readonly api?: ApiServices;
 }
 
 const BODY_LIMIT_BYTES = 16 * 1024;
@@ -40,6 +55,15 @@ function withTimeout(check: HealthCheck, ms: number): Promise<void> {
   });
 }
 
+const API_DESCRIPTION = [
+  'API REST del servidor de Arenal: usuarios, salas, emparejamiento, partidas e historial.',
+  '',
+  'Todo lo que pasa durante una partida (jugadas, eventos, reconexión) va por WebSocket y está',
+  'documentado en el contrato AsyncAPI (`packages/contracts/generated/asyncapi.yaml`).',
+  '',
+  'Los errores siguen RFC 9457 (`application/problem+json`); el catálogo está en `docs/problems.md`.',
+].join('\n');
+
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -50,15 +74,49 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     genReqId: () => randomUUID(),
   });
 
+  app.setValidatorCompiler(validatorCompiler);
+  app.setSerializerCompiler(serializerCompiler);
+  app.decorateRequest('authUser', null);
+
   await app.register(helmet, {
     hsts: { maxAge: 31_536_000, includeSubDomains: true },
     contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
     crossOriginResourcePolicy: { policy: 'same-site' },
   });
 
-  app.get('/health/live', () => ({ status: 'ok', version: options.version }));
+  await app.register(rateLimit, {
+    // Solo las rutas que lo piden (login, registro…). Por ahora en memoria de cada réplica;
+    // el bloque de seguridad lo pasa a Redis para que el límite sea compartido.
+    global: false,
+    errorResponseBuilder: (_request, context) =>
+      new AppError('rate-limited', `Demasiadas solicitudes; vuelve a intentar en ${context.after}`),
+  });
 
-  app.get('/health/ready', async (request, reply) => {
+  if (options.api !== undefined) {
+    await app.register(swagger, {
+      openapi: {
+        openapi: '3.1.0',
+        info: { title: 'Arenal — API REST', version: options.version, description: API_DESCRIPTION },
+        tags: [
+          { name: 'Usuarios' },
+          { name: 'Salas' },
+          { name: 'Emparejamiento' },
+          { name: 'Partidas' },
+          { name: 'Historial' },
+        ],
+        components: {
+          securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+        },
+      },
+      transform: jsonSchemaTransform,
+      transformObject: jsonSchemaTransformObject,
+    });
+    await app.register(swaggerUi, { routePrefix: '/docs', staticCSP: true });
+  }
+
+  app.get('/health/live', { schema: { hide: true } }, () => ({ status: 'ok', version: options.version }));
+
+  app.get('/health/ready', { schema: { hide: true } }, async (request, reply) => {
     if (options.lifecycle.draining) {
       return sendProblem(reply, buildProblem('not-ready', { detail: 'La réplica se está apagando' }));
     }
@@ -79,14 +137,36 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return { status: 'ready', checks };
   });
 
+  if (options.api !== undefined) registerApiRoutes(app, options.api);
+
   app.setNotFoundHandler((request, reply) =>
     sendProblem(reply, buildProblem('not-found', { instance: serializeRequest(request)['path'] ?? '' })),
   );
 
-  app.setErrorHandler((error: FastifyError, request, reply) => {
+  app.setErrorHandler((error: FastifyError | AppError, request, reply) => {
     const instance = serializeRequest(request)['path'] ?? '';
-    if (error.validation !== undefined) {
-      return sendProblem(reply, buildProblem('validation-error', { detail: error.message, instance }));
+
+    if (error instanceof AppError) {
+      if (error.slug === 'unauthorized') void reply.header('www-authenticate', 'Bearer');
+      return sendProblem(
+        reply,
+        buildProblem(error.slug, {
+          detail: error.message,
+          instance,
+          ...(error.code === undefined ? {} : { extensions: { code: error.code } }),
+        }),
+      );
+    }
+    if (hasZodFastifySchemaValidationErrors(error)) {
+      // Se describen los campos y las reglas, nunca los valores que mandó el cliente.
+      const detail = error.validation
+        .map((issue) => `${issue.instancePath.replace(/^\//, '').replaceAll('/', '.') || error.validationContext || 'solicitud'}: ${issue.message ?? 'inválido'}`)
+        .join('; ');
+      return sendProblem(reply, buildProblem('validation-error', { detail, instance }));
+    }
+    if (isResponseSerializationError(error)) {
+      request.log.error({ err: error }, 'la respuesta no cumple su esquema');
+      return sendProblem(reply, buildProblem('internal', { instance }));
     }
     if (error.code === 'FST_ERR_CTP_BODY_TOO_LARGE') {
       return sendProblem(reply, buildProblem('payload-too-large', { instance }));
