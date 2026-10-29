@@ -1,0 +1,12 @@
+**/node_modules
+**/dist
+**/coverage
+.git
+.github
+.githooks
+docs
+infra
+load
+**/*.md
+.env
+.env.*

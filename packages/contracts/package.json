@@ -1,0 +1,30 @@
+{
+  "name": "@arenal/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Esquemas de los mensajes en tiempo real (Zod). Genera el contrato AsyncAPI 3.0.",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "generate": "tsx scripts/generate.ts"
+  },
+  "dependencies": {
+    "@arenal/domain": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@asyncapi/parser": "3.6.6",
+    "yaml": "2.9.1"
+  }
+}

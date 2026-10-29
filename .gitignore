@@ -1,0 +1,16 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Variables de entorno locales: nunca se suben al repo
+.env
+.env.*
+!.env.example
+
+# Resultados locales de pruebas de carga
+load/results/*.json
+
+.DS_Store
+.vscode/*
+!.vscode/extensions.json

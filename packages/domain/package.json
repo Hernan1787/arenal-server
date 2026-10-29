@@ -1,0 +1,21 @@
+{
+  "name": "@arenal/domain",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Motor de reglas de Arenal. Dominio puro: sin red, base de datos ni framework.",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Revisa que el commit no lleve secretos. Un solo secreto en el repo limita la nota de
+# seguridad al 50 %, así que esto corre antes de cada commit.
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks git --staged --redact --no-banner || {
+    echo "gitleaks encontró un posible secreto. Quítalo del commit antes de seguir." >&2
+    exit 1
+  }
+else
+  echo "Aviso: gitleaks no está instalado; el CI lo va a revisar igual. Instálalo: https://github.com/gitleaks/gitleaks#installing" >&2
+fi

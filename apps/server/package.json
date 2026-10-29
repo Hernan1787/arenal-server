@@ -1,0 +1,28 @@
+{
+  "name": "@arenal/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Servidor de Arenal: API REST, WebSocket y adaptadores de Postgres y Redis.",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch --conditions=development src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@arenal/contracts": "workspace:*",
+    "@arenal/domain": "workspace:*",
+    "@fastify/helmet": "13.2.0",
+    "fastify": "5.12.7",
+    "pg": "8.23.1",
+    "redis": "6.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}

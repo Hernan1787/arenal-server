@@ -1,0 +1,1081 @@
+# Archivo generado por `pnpm contracts:generate` a partir de los esquemas Zod. No editar a mano.
+asyncapi: 3.0.0
+info:
+  title: Arenal — protocolo en tiempo real
+  version: 0.1.0
+  description: |-
+    Protocolo WebSocket del servidor de Arenal, versión 1.
+
+    La conexión se autentica en el handshake con un ticket de un solo uso que dura 30 segundos
+    (se pide con `POST /v1/realtime/tickets`). Sin ticket válido el servidor responde 401 y no abre el socket.
+    Cada mensaje del cliente pesa como máximo 4096 bytes y se valida contra su esquema.
+    El servidor manda ping cada 15 segundos; si no recibe pong en 30, cierra con 4000.
+
+    **Códigos de cierre**
+
+    - **1000**: Cierre normal: el jugador salió de la partida.
+    - **1008**: Origen no permitido o violación de política.
+    - **1009**: Mensaje más grande que 4096 bytes.
+    - **1012**: La réplica se está reiniciando: reconectar y mandar resume.
+    - **4000**: No respondió al heartbeat a tiempo.
+    - **4003**: Cuenta suspendida o sin permiso para esta partida.
+    - **4029**: Demasiadas conexiones o demasiados mensajes.
+
+    **Códigos de error**: `NOT_A_PLAYER`, `PLAYER_ELIMINATED`, `NOT_YOUR_TURN`, `CARD_NOT_IN_HAND`, `MATCH_NOT_STARTED`, `MATCH_FINISHED`, `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `STALE_STATE`, `MATCH_NOT_FOUND`, `RATE_LIMITED`, `INTERNAL`
+servers:
+  local:
+    host: localhost:8080
+    protocol: ws
+    pathname: /v1/realtime
+    description: docker compose up
+    security:
+      - $ref: "#/components/securitySchemes/ticket"
+  azure:
+    host: "{appFqdn}"
+    protocol: wss
+    pathname: /v1/realtime
+    description: Azure Container Apps
+    variables:
+      appFqdn:
+        description: Dominio de la app en Azure Container Apps
+    security:
+      - $ref: "#/components/securitySchemes/ticket"
+channels:
+  realtime:
+    address: /v1/realtime
+    title: Conexión en tiempo real
+    messages:
+      PlayCard:
+        $ref: "#/components/messages/PlayCard"
+      Resume:
+        $ref: "#/components/messages/Resume"
+      LeaveMatch:
+        $ref: "#/components/messages/LeaveMatch"
+      Ack:
+        $ref: "#/components/messages/Ack"
+      Event:
+        $ref: "#/components/messages/Event"
+      Snapshot:
+        $ref: "#/components/messages/Snapshot"
+      Error:
+        $ref: "#/components/messages/Error"
+operations:
+  playCard:
+    action: receive
+    channel:
+      $ref: "#/channels/realtime"
+    summary: El jugador de turno juega una carta.
+    messages:
+      - $ref: "#/channels/realtime/messages/PlayCard"
+    reply:
+      channel:
+        $ref: "#/channels/realtime"
+      messages:
+        - $ref: "#/channels/realtime/messages/Ack"
+        - $ref: "#/channels/realtime/messages/Error"
+  resume:
+    action: receive
+    channel:
+      $ref: "#/channels/realtime"
+    summary: El cliente pide los eventos que le faltan.
+    messages:
+      - $ref: "#/channels/realtime/messages/Resume"
+    reply:
+      channel:
+        $ref: "#/channels/realtime"
+      messages:
+        - $ref: "#/channels/realtime/messages/Snapshot"
+        - $ref: "#/channels/realtime/messages/Error"
+  leaveMatch:
+    action: receive
+    channel:
+      $ref: "#/channels/realtime"
+    summary: El jugador abandona la partida.
+    messages:
+      - $ref: "#/channels/realtime/messages/LeaveMatch"
+    reply:
+      channel:
+        $ref: "#/channels/realtime"
+      messages:
+        - $ref: "#/channels/realtime/messages/Ack"
+        - $ref: "#/channels/realtime/messages/Error"
+  sendEvent:
+    action: send
+    channel:
+      $ref: "#/channels/realtime"
+    summary: El servidor reparte cada evento confirmado, filtrado para cada jugador.
+    messages:
+      - $ref: "#/channels/realtime/messages/Event"
+  sendSnapshot:
+    action: send
+    channel:
+      $ref: "#/channels/realtime"
+    summary: Estado visible al conectarse.
+    messages:
+      - $ref: "#/channels/realtime/messages/Snapshot"
+components:
+  securitySchemes:
+    ticket:
+      type: httpApiKey
+      name: ticket
+      in: query
+      description: Ticket aleatorio de un solo uso que vence en 30 segundos.
+  messages:
+    PlayCard:
+      name: PlayCard
+      title: Jugar una carta
+      summary: cliente → servidor. Intención de jugar una carta de la mano. Solo la acepta el servidor si es tu turno.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/PlayCard"
+      examples:
+        - name: PlayCardEjemplo
+          payload:
+            v: 1
+            type: play_card
+            id: 0193f2a1-7c4e-7b1a-9d2e-5f6a7b8c9d0e
+            matchId: m_01jbx4
+            expectedSeq: 41
+            payload:
+              cardId: c_8f3k2a
+    Resume:
+      name: Resume
+      title: Reanudar
+      summary: cliente → servidor. Reengancharse a una partida después de una desconexión.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/Resume"
+      examples:
+        - name: ResumeEjemplo
+          payload:
+            v: 1
+            type: resume
+            id: 0193f2a1-7c4e-7b1a-9d2e-5f6a7b8c9d0f
+            matchId: m_01jbx4
+            lastSeq: 38
+    LeaveMatch:
+      name: LeaveMatch
+      title: Salir de la partida
+      summary: cliente → servidor. Salir de la partida. Cuenta como abandono.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/LeaveMatch"
+      examples:
+        - name: LeaveMatchEjemplo
+          payload:
+            v: 1
+            type: leave_match
+            id: 0193f2a1-7c4e-7b1a-9d2e-5f6a7b8c9d10
+            matchId: m_01jbx4
+    Ack:
+      name: Ack
+      title: Confirmación
+      summary: servidor → cliente. La jugada quedó guardada en la base de datos.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/Ack"
+      examples:
+        - name: AckEjemplo
+          payload:
+            v: 1
+            type: ack
+            id: 0193f2a1-7c4e-7b1a-9d2e-5f6a7b8c9d0e
+            seq: 44
+            duplicate: false
+    Event:
+      name: Event
+      title: Evento de la partida
+      summary: servidor → cliente. Un evento nuevo de la partida. Los `seq` llegan seguidos; un hueco significa que hay que mandar `resume`.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/Event"
+      examples:
+        - name: EventEjemplo
+          payload:
+            v: 1
+            type: event
+            matchId: m_01jbx4
+            seq: 42
+            event:
+              type: CardPlayed
+              playerId: u_ana
+              card:
+                id: c_8f3k2a
+                kind: stone
+                value: 3
+              pressureAfter: 17
+              auto: false
+    Snapshot:
+      name: Snapshot
+      title: Estado visible
+      summary: servidor → cliente. Estado completo visible para el jugador. Se manda al conectarse o al reconectar.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/Snapshot"
+      examples:
+        - name: SnapshotEjemplo
+          payload:
+            v: 1
+            type: snapshot
+            matchId: m_01jbx4
+            seq: 44
+            view:
+              matchId: m_01jbx4
+              status: playing
+              version: 44
+              round: 2
+              turn: 9
+              currentPlayer: u_beto
+              pressure: 17
+              lastRevealedLimit: 19
+              drawPileCount: 27
+              discardCount: 9
+              players:
+                - id: u_ana
+                  seat: 0
+                  lives: 3
+                  handCount: 4
+                  eliminated: false
+                  eliminationReason: null
+                - id: u_beto
+                  seat: 1
+                  lives: 2
+                  handCount: 4
+                  eliminated: false
+                  eliminationReason: null
+              you:
+                id: u_ana
+                hand:
+                  - id: c_0k2m9z
+                    kind: stone
+                    value: 1
+                  - id: c_7xq1aa
+                    kind: cool
+                  - id: c_p3r8dd
+                    kind: seismo
+                  - id: c_9vb2ee
+                    kind: stone
+                    value: 4
+                seismo: null
+              rules:
+                startingLives: 3
+                handSize: 4
+                limitMin: 15
+                limitMax: 25
+                coolAmount: 3
+                seismoThreshold: 4
+                maxRounds: 15
+              result: null
+    Error:
+      name: Error
+      title: Error
+      summary: servidor → cliente. Error tipado. Un mensaje inválido nunca cierra la partida.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/Error"
+      examples:
+        - name: ErrorEjemplo
+          payload:
+            v: 1
+            type: error
+            id: 0193f2a1-7c4e-7b1a-9d2e-5f6a7b8c9d0e
+            code: NOT_YOUR_TURN
+            message: No es tu turno
+            retryable: false
+  schemas:
+    PlayCard:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          description: ID generado por el cliente. Si reenvía el mismo ID, la jugada no se aplica dos veces.
+        matchId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_-]+$
+        type:
+          type: string
+          const: play_card
+        expectedSeq:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Último `seq` que vio el cliente. Si la partida avanzó, se rechaza con STALE_STATE.
+        payload:
+          type: object
+          properties:
+            cardId:
+              type: string
+              pattern: ^c_[0-9a-z]{6}$
+              description: ID opaco de la carta, distinto en cada partida.
+          required:
+            - cardId
+          additionalProperties: false
+      required:
+        - v
+        - id
+        - matchId
+        - type
+        - expectedSeq
+        - payload
+      additionalProperties: false
+      description: Intención de jugar una carta de la mano. Solo la acepta el servidor si es tu turno.
+    Resume:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          description: ID generado por el cliente. Si reenvía el mismo ID, la jugada no se aplica dos veces.
+        matchId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_-]+$
+        type:
+          type: string
+          const: resume
+        lastSeq:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Último `seq` recibido. El servidor manda los eventos que faltan o un snapshot.
+      required:
+        - v
+        - id
+        - matchId
+        - type
+        - lastSeq
+      additionalProperties: false
+      description: Reengancharse a una partida después de una desconexión.
+    LeaveMatch:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          description: ID generado por el cliente. Si reenvía el mismo ID, la jugada no se aplica dos veces.
+        matchId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_-]+$
+        type:
+          type: string
+          const: leave_match
+      required:
+        - v
+        - id
+        - matchId
+        - type
+      additionalProperties: false
+      description: Salir de la partida. Cuenta como abandono.
+    Ack:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        type:
+          type: string
+          const: ack
+        id:
+          type: string
+          format: uuid
+          pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+          description: ID del mensaje del cliente que se confirma.
+        seq:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Secuencia de la partida después de aplicar la jugada.
+        duplicate:
+          type: boolean
+          description: "`true` si el mensaje ya se había aplicado antes (reenvío)."
+      required:
+        - v
+        - type
+        - id
+        - seq
+        - duplicate
+      description: La jugada quedó guardada en la base de datos.
+    Event:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        type:
+          type: string
+          const: event
+        matchId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_-]+$
+        seq:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        event:
+          oneOf:
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: MatchStarted
+                playerOrder:
+                  type: array
+                  items:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+              required:
+                - type
+                - playerOrder
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: DeckShuffled
+                count:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - type
+                - count
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: CardDrawn
+                playerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                card:
+                  oneOf:
+                    - type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^c_[0-9a-z]{6}$
+                          description: ID opaco de la carta, distinto en cada partida.
+                        kind:
+                          type: string
+                          const: stone
+                        value:
+                          anyOf:
+                            - type: number
+                              const: 1
+                            - type: number
+                              const: 2
+                            - type: number
+                              const: 3
+                            - type: number
+                              const: 4
+                      required:
+                        - id
+                        - kind
+                        - value
+                    - type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^c_[0-9a-z]{6}$
+                          description: ID opaco de la carta, distinto en cada partida.
+                        kind:
+                          type: string
+                          const: cool
+                      required:
+                        - id
+                        - kind
+                    - type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^c_[0-9a-z]{6}$
+                          description: ID opaco de la carta, distinto en cada partida.
+                        kind:
+                          type: string
+                          const: seismo
+                      required:
+                        - id
+                        - kind
+              required:
+                - type
+                - playerId
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: RoundStarted
+                round:
+                  type: integer
+                  minimum: 1
+                  maximum: 9007199254740991
+                firstPlayer:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+              required:
+                - type
+                - round
+                - firstPlayer
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: TurnStarted
+                playerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                turn:
+                  type: integer
+                  minimum: 1
+                  maximum: 9007199254740991
+              required:
+                - type
+                - playerId
+                - turn
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: CardPlayed
+                playerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                card:
+                  oneOf:
+                    - type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^c_[0-9a-z]{6}$
+                          description: ID opaco de la carta, distinto en cada partida.
+                        kind:
+                          type: string
+                          const: stone
+                        value:
+                          anyOf:
+                            - type: number
+                              const: 1
+                            - type: number
+                              const: 2
+                            - type: number
+                              const: 3
+                            - type: number
+                              const: 4
+                      required:
+                        - id
+                        - kind
+                        - value
+                    - type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^c_[0-9a-z]{6}$
+                          description: ID opaco de la carta, distinto en cada partida.
+                        kind:
+                          type: string
+                          const: cool
+                      required:
+                        - id
+                        - kind
+                    - type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^c_[0-9a-z]{6}$
+                          description: ID opaco de la carta, distinto en cada partida.
+                        kind:
+                          type: string
+                          const: seismo
+                      required:
+                        - id
+                        - kind
+                pressureAfter:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+                auto:
+                  type: boolean
+              required:
+                - type
+                - playerId
+                - card
+                - pressureAfter
+                - auto
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: SeismoRead
+                playerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                near:
+                  type: boolean
+              required:
+                - type
+                - playerId
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: Eruption
+                playerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                limit:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                livesLeft:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - type
+                - playerId
+                - limit
+                - livesLeft
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: PlayerEliminated
+                playerId:
+                  type: string
+                  minLength: 1
+                  maxLength: 64
+                reason:
+                  type: string
+                  enum:
+                    - lives
+                    - abandon
+                discardedCount:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - type
+                - playerId
+                - reason
+                - discardedCount
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: DiscardReshuffled
+                count:
+                  type: integer
+                  minimum: 0
+                  maximum: 9007199254740991
+              required:
+                - type
+                - count
+            - type: object
+              properties:
+                type:
+                  type: string
+                  const: MatchEnded
+                result:
+                  oneOf:
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          const: winner
+                        winner:
+                          type: string
+                          minLength: 1
+                          maxLength: 64
+                        reason:
+                          type: string
+                          enum:
+                            - last_standing
+                            - most_lives
+                      required:
+                        - kind
+                        - winner
+                        - reason
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          const: draw
+                        players:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 64
+                        reason:
+                          type: string
+                          enum:
+                            - tied_lives
+                            - no_players
+                      required:
+                        - kind
+                        - players
+                        - reason
+              required:
+                - type
+                - result
+          description: Evento de la partida ya filtrado para quien lo recibe.
+      required:
+        - v
+        - type
+        - matchId
+        - seq
+        - event
+      description: Un evento nuevo de la partida. Los `seq` llegan seguidos; un hueco significa que hay que mandar `resume`.
+    Snapshot:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        type:
+          type: string
+          const: snapshot
+        matchId:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[A-Za-z0-9_-]+$
+        seq:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: Número de secuencia del último evento de la partida.
+        view:
+          type: object
+          properties:
+            matchId:
+              type: string
+              minLength: 1
+              maxLength: 64
+              pattern: ^[A-Za-z0-9_-]+$
+            status:
+              type: string
+              enum:
+                - waiting
+                - playing
+                - finished
+            version:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+              description: Número de secuencia del último evento de la partida.
+            round:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            turn:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            currentPlayer:
+              anyOf:
+                - type: string
+                  minLength: 1
+                  maxLength: 64
+                - type: "null"
+            pressure:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            lastRevealedLimit:
+              anyOf:
+                - type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                - type: "null"
+            drawPileCount:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            discardCount:
+              type: integer
+              minimum: 0
+              maximum: 9007199254740991
+            players:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    minLength: 1
+                    maxLength: 64
+                  seat:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  lives:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  handCount:
+                    type: integer
+                    minimum: 0
+                    maximum: 9007199254740991
+                  eliminated:
+                    type: boolean
+                  eliminationReason:
+                    anyOf:
+                      - type: string
+                        enum:
+                          - lives
+                          - abandon
+                      - type: "null"
+                required:
+                  - id
+                  - seat
+                  - lives
+                  - handCount
+                  - eliminated
+                  - eliminationReason
+            you:
+              anyOf:
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      minLength: 1
+                      maxLength: 64
+                    hand:
+                      type: array
+                      items:
+                        oneOf:
+                          - type: object
+                            properties:
+                              id:
+                                type: string
+                                pattern: ^c_[0-9a-z]{6}$
+                                description: ID opaco de la carta, distinto en cada partida.
+                              kind:
+                                type: string
+                                const: stone
+                              value:
+                                anyOf:
+                                  - type: number
+                                    const: 1
+                                  - type: number
+                                    const: 2
+                                  - type: number
+                                    const: 3
+                                  - type: number
+                                    const: 4
+                            required:
+                              - id
+                              - kind
+                              - value
+                          - type: object
+                            properties:
+                              id:
+                                type: string
+                                pattern: ^c_[0-9a-z]{6}$
+                                description: ID opaco de la carta, distinto en cada partida.
+                              kind:
+                                type: string
+                                const: cool
+                            required:
+                              - id
+                              - kind
+                          - type: object
+                            properties:
+                              id:
+                                type: string
+                                pattern: ^c_[0-9a-z]{6}$
+                                description: ID opaco de la carta, distinto en cada partida.
+                              kind:
+                                type: string
+                                const: seismo
+                            required:
+                              - id
+                              - kind
+                    seismo:
+                      anyOf:
+                        - type: object
+                          properties:
+                            near:
+                              type: boolean
+                          required:
+                            - near
+                        - type: "null"
+                  required:
+                    - id
+                    - hand
+                    - seismo
+                - type: "null"
+            rules:
+              type: object
+              properties:
+                startingLives:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                handSize:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                limitMin:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                limitMax:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                coolAmount:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                seismoThreshold:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+                maxRounds:
+                  type: integer
+                  minimum: -9007199254740991
+                  maximum: 9007199254740991
+              required:
+                - startingLives
+                - handSize
+                - limitMin
+                - limitMax
+                - coolAmount
+                - seismoThreshold
+                - maxRounds
+            result:
+              anyOf:
+                - oneOf:
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          const: winner
+                        winner:
+                          type: string
+                          minLength: 1
+                          maxLength: 64
+                        reason:
+                          type: string
+                          enum:
+                            - last_standing
+                            - most_lives
+                      required:
+                        - kind
+                        - winner
+                        - reason
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          const: draw
+                        players:
+                          type: array
+                          items:
+                            type: string
+                            minLength: 1
+                            maxLength: 64
+                        reason:
+                          type: string
+                          enum:
+                            - tied_lives
+                            - no_players
+                      required:
+                        - kind
+                        - players
+                        - reason
+                - type: "null"
+          required:
+            - matchId
+            - status
+            - version
+            - round
+            - turn
+            - currentPlayer
+            - pressure
+            - lastRevealedLimit
+            - drawPileCount
+            - discardCount
+            - players
+            - you
+            - rules
+            - result
+          description: Lo que un jugador puede ver de la partida. Nunca incluye el límite secreto ni el mazo.
+      required:
+        - v
+        - type
+        - matchId
+        - seq
+        - view
+      description: Estado completo visible para el jugador. Se manda al conectarse o al reconectar.
+    Error:
+      type: object
+      properties:
+        v:
+          type: number
+          const: 1
+        type:
+          type: string
+          const: error
+        id:
+          anyOf:
+            - type: string
+              format: uuid
+              pattern: ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+              description: ID generado por el cliente. Si reenvía el mismo ID, la jugada no se aplica dos veces.
+            - type: "null"
+          description: ID del mensaje que causó el error, si se pudo leer.
+        code:
+          type: string
+          enum:
+            - NOT_A_PLAYER
+            - PLAYER_ELIMINATED
+            - NOT_YOUR_TURN
+            - CARD_NOT_IN_HAND
+            - MATCH_NOT_STARTED
+            - MATCH_FINISHED
+            - INVALID_MESSAGE
+            - UNSUPPORTED_VERSION
+            - STALE_STATE
+            - MATCH_NOT_FOUND
+            - RATE_LIMITED
+            - INTERNAL
+        message:
+          type: string
+        retryable:
+          type: boolean
+      required:
+        - v
+        - type
+        - id
+        - code
+        - message
+        - retryable
+      description: Error tipado. Un mensaje inválido nunca cierra la partida.
