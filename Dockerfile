@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 # --- Compilación ------------------------------------------------------------------------
-FROM node:24-slim AS build
+FROM node:25-slim AS build
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH CI=true
 RUN corepack enable
 WORKDIR /repo
@@ -21,7 +21,7 @@ RUN pnpm --filter "@arenal/server..." build \
  && pnpm --filter @arenal/server deploy --prod --legacy /out
 
 # --- Imagen final -------------------------------------------------------------------------
-FROM node:24-slim AS runtime
+FROM node:25-slim AS runtime
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./
