@@ -14,10 +14,14 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | --- | --- |
 | Motor de reglas (`packages/domain`) | Listo, con pruebas unitarias y de propiedades |
 | Contrato en tiempo real (`packages/contracts`) | v0: mensajes, errores y códigos de cierre; genera AsyncAPI 3.0 |
-| Servidor HTTP (`apps/server`) | Sondas `/health/live` y `/health/ready`, Problem Details, encabezados de seguridad, apagado ordenado |
-| Usuarios, salas, emparejamiento | Pendiente |
+| Usuarios | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256 |
+| Salas | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica |
+| Emparejamiento | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas |
+| Partidas | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición |
+| API REST | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details |
 | WebSocket, turnos con temporizador, reconexión | Pendiente |
-| Persistencia en Postgres y difusión por Redis | Pendiente |
+| Difusión entre réplicas por Redis | Pendiente |
+| Administración | Pendiente |
 | Infraestructura en Azure (Bicep) y despliegue | Pendiente |
 | Prueba de carga | Pendiente |
 
@@ -33,21 +37,26 @@ curl localhost:8080/health/ready
 # {"status":"ready","checks":{"postgres":"ok","redis":"ok"}}
 ```
 
-Compose levanta Postgres 17, Redis 7.4 y el servidor. No hay contraseñas: Postgres usa autenticación `trust`
-y los puertos solo escuchan en `127.0.0.1`.
+Compose levanta Postgres 17, Redis 7.4 y el servidor, que aplica las migraciones al arrancar. La API queda
+documentada en http://localhost:8080/docs. No hay contraseñas: Postgres usa autenticación `trust` y los
+puertos solo escuchan en `127.0.0.1`.
+
+Fuera de producción, si no se configura `JWT_PRIVATE_KEY`, el servidor genera una llave temporal y los tokens
+dejan de servir al reiniciar. En Azure la llave viene de Key Vault.
 
 ## Desarrollo
 
-Requisitos: Node 24 (`nvm use`) y pnpm 10 (`corepack enable`).
+Requisitos: Node 24 o superior y pnpm 10 (`npm install -g pnpm@10`).
 
 ```bash
 pnpm install
-pnpm test              # todas las pruebas
+pnpm test              # pruebas unitarias (no necesitan base de datos)
 pnpm lint              # ESLint estricto (sin any, dominio puro)
 pnpm typecheck         # TypeScript estricto
-pnpm contracts:check   # el contrato AsyncAPI generado está al día con el código
+pnpm contracts:check   # AsyncAPI y OpenAPI generados están al día con el código
 
 docker compose up -d postgres redis
+pnpm test:integration  # pruebas contra Postgres real: concurrencia, idempotencia, durabilidad
 pnpm dev               # servidor con recarga en http://localhost:8080
 ```
 
@@ -58,10 +67,16 @@ instalado. El CI lo corre siempre.
 
 ```
 packages/domain      motor de reglas puro: decide, evolve, viewFor, projectEvent
-packages/contracts   esquemas Zod de los mensajes; genera generated/asyncapi.yaml
-apps/server          Fastify: HTTP, sondas, Postgres y Redis
+packages/contracts   esquemas Zod del protocolo; genera generated/asyncapi.yaml y guarda openapi.json
+apps/server
+  src/auth           contraseñas (Argon2id), JWT y refresh tokens
+  src/lobby          salas y cola de emparejamiento
+  src/matches        persistencia de partidas: orden, idempotencia, historial y repetición
+  src/http           rutas, esquemas de la API, guardia de autenticación, Problem Details
+  src/db             migraciones y transacciones
+  test/integration   pruebas contra Postgres real
 docs/                reglas, decisiones de arquitectura (ADR) y catálogo de errores
-.github/             CI (lint, tipos, pruebas, contratos, gitleaks, Trivy), CodeQL y Dependabot
+.github/             CI (lint, tipos, pruebas, contratos, gitleaks, imagen, Trivy), CodeQL y Dependabot
 ```
 
 El dominio no depende de nada: ni red, ni base de datos, ni framework, ni reloj ni `Math.random`. Una regla
@@ -70,9 +85,11 @@ de ESLint y una prueba de arquitectura rompen el build si alguien lo intenta. El
 
 ## Contratos
 
+- **REST:** OpenAPI 3.1 en `/docs` (interfaz) y `/docs/json`. Copia versionada en
+  [`packages/contracts/generated/openapi.json`](packages/contracts/generated/openapi.json); se genera desde las
+  rutas reales con `pnpm contracts:generate` y una prueba falla si quedó desactualizada.
 - **Tiempo real:** [`packages/contracts/generated/asyncapi.yaml`](packages/contracts/generated/asyncapi.yaml),
-  generado desde los esquemas Zod con `pnpm contracts:generate`. No se edita a mano.
-- **REST:** OpenAPI 3.1 en `/docs` (pendiente, llega con los endpoints de usuarios y salas).
+  generado desde los esquemas Zod. No se edita a mano.
 - **Errores HTTP:** Problem Details (RFC 9457). Catálogo en [docs/problems.md](docs/problems.md).
 
 ## Decisiones de arquitectura
@@ -83,3 +100,5 @@ En [docs/adr](docs/adr):
 2. [El dominio decide con eventos y Postgres ordena las jugadas](docs/adr/0002-eventos-y-orden-en-postgres.md)
 3. [Azure Managed Redis en lugar de Azure Cache for Redis](docs/adr/0003-azure-managed-redis.md)
 4. [WebSocket con `ws` en lugar de Socket.IO](docs/adr/0004-websocket-con-ws.md)
+5. [Salas y cola de emparejamiento en Postgres](docs/adr/0005-salas-y-cola-en-postgres.md)
+6. [Autenticación propia con JWT ES256 y refresh rotativo](docs/adr/0006-autenticacion-propia.md)
