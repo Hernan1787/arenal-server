@@ -17,8 +17,10 @@ COPY tsconfig.base.json ./
 COPY packages/domain packages/domain
 COPY packages/contracts packages/contracts
 COPY apps/server apps/server
+# --ignore-scripts: la imagen no ejecuta scripts de instalación (ni los del repo, como
+# `prepare`, que necesita archivos que no entran al contexto de Docker).
 RUN pnpm --filter "@arenal/server..." build \
- && pnpm --filter @arenal/server deploy --prod --legacy /out
+ && pnpm --filter @arenal/server deploy --prod --legacy --ignore-scripts /out
 
 # --- Imagen final -------------------------------------------------------------------------
 FROM node:24-slim AS runtime
