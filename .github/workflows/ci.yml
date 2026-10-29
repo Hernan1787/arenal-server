@@ -103,7 +103,11 @@ jobs:
           test "$uid" != "0"
       - name: La imagen arranca, migra la base y queda lista
         run: |
-          docker run -d --name smoke --network host -e PG_HOST=127.0.0.1 -e REDIS_HOST=127.0.0.1 arenal-server:ci
+          # La imagen corre en modo producción y exige la llave de firma de los JWT. En Azure viene
+          # de Key Vault; aquí se genera una desechable en cada corrida.
+          JWT_PRIVATE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)"
+          export JWT_PRIVATE_KEY
+          docker run -d --name smoke --network host -e PG_HOST=127.0.0.1 -e REDIS_HOST=127.0.0.1 -e JWT_PRIVATE_KEY arenal-server:ci
           for i in $(seq 1 30); do curl -fsS localhost:8080/health/ready && break; sleep 1; done
           curl -fsS localhost:8080/health/ready || { docker logs smoke; exit 1; }
       - name: Prueba de humo de la API (registro con Argon2 nativo dentro del contenedor)
