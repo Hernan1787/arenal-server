@@ -1,3 +1,4 @@
+import { hostname } from 'node:os';
 import { z } from 'zod';
 
 const ms = (max: number, fallback: number) => z.coerce.number().int().min(0).max(max).default(fallback);
@@ -14,6 +15,11 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   PUBLIC_BASE_URL: z.url().optional(),
+  /** Nombre de esta réplica en la vista de conexiones. En Container Apps, el hostname es el nombre de la réplica. */
+  REPLICA_ID: z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{1,100}$/)
+    .default(() => hostname()),
 
   PG_HOST: z.string().min(1).default('localhost'),
   PG_PORT: z.coerce.number().int().min(1).max(65535).default(5432),
@@ -57,6 +63,7 @@ const EnvSchema = z.object({
   /** Límites por minuto. Se suben solo para la prueba de carga. */
   RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(10),
   RATE_LIMIT_TICKETS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(30),
+  RATE_LIMIT_ADMIN_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(120),
   WS_TICKET_TTL_S: z.coerce.number().int().min(5).max(300).default(30),
   WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(100).max(120_000).default(15_000),
   WS_HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().min(200).max(300_000).default(30_000),

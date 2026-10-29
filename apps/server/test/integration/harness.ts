@@ -78,7 +78,9 @@ export function useHarness(options: HarnessOptions = {}): Harness {
 
   const startReplica = async (): Promise<Replica> => {
     const redis = await newRedis();
-    const services = await createServices({ db: h.db, redis, config: h.config, clock: h.clock, log: silentLog });
+    // Cada réplica con su nombre, como en Container Apps (sale en la vista de conexiones).
+    const config = { ...h.config, REPLICA_ID: `replica-${replicas.length + 1}` };
+    const services = await createServices({ db: h.db, redis, config, clock: h.clock, log: silentLog });
     const draining = { value: false };
     const app = await buildApp({
       version: 'test',
@@ -93,6 +95,7 @@ export function useHarness(options: HarnessOptions = {}): Harness {
       rateLimits: {
         authPerMinute: h.config.RATE_LIMIT_AUTH_PER_MINUTE,
         ticketsPerMinute: h.config.RATE_LIMIT_TICKETS_PER_MINUTE,
+        adminPerMinute: h.config.RATE_LIMIT_ADMIN_PER_MINUTE,
       },
     });
     let realtime: RealtimeGateway | null = null;
@@ -152,7 +155,12 @@ export function useHarness(options: HarnessOptions = {}): Harness {
   afterEach(async () => {
     // Cierra las réplicas extra que haya levantado la prueba.
     while (replicas.length > 1) await replicas.pop()?.close();
-    await h.db.query(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`);
+    // La auditoría bloquea TRUNCATE (es de solo inserción); solo aquí, en pruebas, se apaga un momento.
+    await h.db.query(`BEGIN;
+      ALTER TABLE admin_audit DISABLE TRIGGER admin_audit_no_truncate;
+      TRUNCATE admin_audit, ${TABLES.join(', ')} RESTART IDENTITY CASCADE;
+      ALTER TABLE admin_audit ENABLE TRIGGER admin_audit_no_truncate;
+      COMMIT;`);
     await h.redis.flushDb();
   });
 

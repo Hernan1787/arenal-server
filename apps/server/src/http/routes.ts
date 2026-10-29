@@ -1,7 +1,8 @@
 import { PlayerEventSchema, PlayerViewSchema } from '@arenal/contracts';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
+import type { AdminService } from '../admin/admin-service.js';
 import type { AuthService } from '../auth/auth-service.js';
 import type { TokenIssuer } from '../auth/tokens.js';
 import type { MatchmakingService } from '../lobby/matchmaking-service.js';
@@ -9,7 +10,9 @@ import type { RoomsService } from '../lobby/rooms-service.js';
 import type { MatchesService } from '../matches/matches-service.js';
 import { REALTIME_PATH } from '../realtime/gateway.js';
 import type { TicketStore } from '../realtime/tickets.js';
+import { registerAdminRoutes } from './admin-routes.js';
 import { currentUser, requireAuth } from './auth-guard.js';
+import { bearer, perIp, perUser } from './route-config.js';
 import * as S from './schemas.js';
 
 export interface ApiServices {
@@ -19,18 +22,19 @@ export interface ApiServices {
   readonly matchmaking: MatchmakingService;
   readonly matches: MatchesService;
   readonly tickets: TicketStore;
+  readonly admin: AdminService;
 }
-
-const bearer = [{ bearerAuth: [] }];
 
 export interface RateLimits {
   /** Registro, login y unión por código, por IP. */
   readonly authPerMinute: number;
   /** Tickets de WebSocket, por usuario. */
   readonly ticketsPerMinute: number;
+  /** Rutas de administración, por usuario. */
+  readonly adminPerMinute: number;
 }
 
-export const DEFAULT_RATE_LIMITS: RateLimits = { authPerMinute: 10, ticketsPerMinute: 30 };
+export const DEFAULT_RATE_LIMITS: RateLimits = { authPerMinute: 10, ticketsPerMinute: 30, adminPerMinute: 120 };
 
 /** Rutas de la API v1. Todo lo que no es tiempo real pasa por aquí. */
 export function registerApiRoutes(
@@ -40,17 +44,6 @@ export function registerApiRoutes(
 ): void {
   const app = root.withTypeProvider<ZodTypeProvider>();
   const auth = requireAuth(services.tokens, services.auth);
-  const perIp = (max: number) => ({ rateLimit: { max, timeWindow: '1 minute' } });
-  // En rutas autenticadas el límite va por usuario y se evalúa después de la guardia: muchos
-  // jugadores detrás de la misma IP (una red universitaria, la prueba de carga) no se bloquean entre sí.
-  const perUser = (max: number) => ({
-    rateLimit: {
-      max,
-      timeWindow: '1 minute',
-      hook: 'preHandler' as const,
-      keyGenerator: (request: FastifyRequest) => request.authUser?.id ?? request.ip,
-    },
-  });
 
   // --- Usuarios ----------------------------------------------------------------------------
 
@@ -327,4 +320,6 @@ export function registerApiRoutes(
       };
     },
   });
+
+  registerAdminRoutes(root, services, limits.adminPerMinute);
 }

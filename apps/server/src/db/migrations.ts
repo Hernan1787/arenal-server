@@ -129,4 +129,37 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX match_players_disconnected_idx ON match_players (disconnected_at) WHERE active AND disconnected_at IS NOT NULL;
     `,
   },
+  {
+    id: '003_auditoria',
+    sql: /* sql */ `
+      -- Cada acción de administración deja una fila aquí, en la misma transacción que la acción:
+      -- si no se puede auditar, no se hace.
+      CREATE TABLE admin_audit (
+        id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        -- NULL cuando la acción la hizo un operador desde la línea de comandos.
+        actor_id    uuid REFERENCES users (id),
+        action      text NOT NULL CHECK (action IN (
+                      'match.terminate', 'user.suspend', 'user.reinstate', 'user.grant_admin', 'user.revoke_admin')),
+        target_type text NOT NULL CHECK (target_type IN ('match', 'user')),
+        target_id   uuid NOT NULL,
+        reason      text NOT NULL CHECK (char_length(reason) BETWEEN 3 AND 500),
+        details     jsonb NOT NULL DEFAULT '{}'::jsonb,
+        request_id  text,
+        created_at  timestamptz NOT NULL DEFAULT now()
+      );
+      CREATE INDEX admin_audit_created_idx ON admin_audit (created_at DESC, id DESC);
+      CREATE INDEX admin_audit_target_idx ON admin_audit (target_id, created_at DESC);
+
+      -- El registro es de solo inserción: ni la aplicación puede cambiar o borrar una fila.
+      CREATE FUNCTION admin_audit_append_only() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        RAISE EXCEPTION 'admin_audit es de solo inserción' USING ERRCODE = 'insufficient_privilege';
+      END
+      $$;
+      CREATE TRIGGER admin_audit_no_change BEFORE UPDATE OR DELETE ON admin_audit
+        FOR EACH ROW EXECUTE FUNCTION admin_audit_append_only();
+      CREATE TRIGGER admin_audit_no_truncate BEFORE TRUNCATE ON admin_audit
+        FOR EACH STATEMENT EXECUTE FUNCTION admin_audit_append_only();
+    `,
+  },
 ];

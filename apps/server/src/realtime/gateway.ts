@@ -18,13 +18,7 @@ import type { AuthService } from '../auth/auth-service.js';
 import type { ApplyResult, MatchStore } from '../matches/match-store.js';
 import type { MatchesService } from '../matches/matches-service.js';
 import type { RedisClient } from '../infra/redis.js';
-import {
-  matchChannel,
-  userChannel,
-  type MatchAssignedMessage,
-  type MatchEventsMessage,
-  type SequencedEvent,
-} from './bus.js';
+import { matchChannel, userChannel, type MatchEventsMessage, type SequencedEvent, type UserMessage } from './bus.js';
 import type { Presence } from './presence.js';
 import type { TicketStore } from './tickets.js';
 
@@ -264,6 +258,12 @@ export class RealtimeGateway {
     }
     await this.addUserSession(session);
     if (session.isClosed()) return this.removeUserSession(session);
+    // Ya suscrito al canal del usuario, se revisa la cuenta otra vez: si la suspendieron entre
+    // el handshake y la suscripción, el aviso por Redis se pudo perder, pero esta lectura lo ve.
+    if ((await this.deps.auth.accountStatus(userId))?.suspended !== false) {
+      session.close(4003, 'La cuenta fue suspendida');
+      return;
+    }
 
     const active = await this.deps.matches.activeMatchOf(userId);
     if (active !== null && !session.isClosed()) session.enqueue(() => this.attachToMatch(session, active));
@@ -428,15 +428,25 @@ export class RealtimeGateway {
   };
 
   private readonly onUserMessage = (raw: string, channel: string): void => {
-    let message: MatchAssignedMessage;
+    let message: UserMessage;
     try {
-      message = JSON.parse(raw) as MatchAssignedMessage;
+      message = JSON.parse(raw) as UserMessage;
     } catch {
       return;
     }
     const userId = channel.slice(userChannel('').length);
-    for (const session of this.byUser.get(userId) ?? [])
-      session.enqueue(() => this.attachToMatch(session, message.matchId));
+    for (const session of this.byUser.get(userId) ?? []) {
+      switch (message.type) {
+        case 'assigned': {
+          const { matchId } = message;
+          session.enqueue(() => this.attachToMatch(session, matchId));
+          break;
+        }
+        case 'suspended':
+          session.close(4003, 'La cuenta fue suspendida');
+          break;
+      }
+    }
   };
 
   private async addUserSession(session: Session): Promise<void> {

@@ -58,6 +58,11 @@ export interface ApplyOptions {
   readonly expectedSeq?: number;
   /** Quién manda la jugada, para el registro de idempotencia. */
   readonly actorId?: string;
+  /**
+   * Trabajo extra dentro de la misma transacción, solo si la intención se aplicó (por ejemplo,
+   * la fila de auditoría de una acción de administración). Si falla, la jugada tampoco queda.
+   */
+  readonly withinTransaction?: (tx: Tx, applied: { readonly seq: number; readonly state: GameState }) => Promise<void>;
 }
 
 export interface MatchStoreDeps {
@@ -172,6 +177,7 @@ export class MatchStore {
           next.version,
         ]);
       }
+      await options.withinTransaction?.(tx, { seq: next.version, state: next });
       return { kind: 'applied', seq: next.version, events, state: next };
     });
   }
@@ -240,6 +246,7 @@ export class MatchStore {
 
     const now = this.deps.clock.now();
     const finished = state.status === 'finished';
+    const status: MatchStatus = !finished ? 'playing' : state.result?.kind === 'aborted' ? 'aborted' : 'finished';
     const turnChanged = state.turn !== previousTurn;
     await tx.query(
       `UPDATE matches SET
@@ -249,13 +256,13 @@ export class MatchStore {
          turn = $5,
          turn_deadline = CASE WHEN $3 <> 'playing' THEN NULL WHEN $6 THEN $7::timestamptz ELSE turn_deadline END,
          result = $8,
-         finished_at = CASE WHEN $3 = 'finished' THEN $9::timestamptz ELSE finished_at END,
+         finished_at = CASE WHEN $3 <> 'playing' THEN $9::timestamptz ELSE finished_at END,
          updated_at = $9
        WHERE id = $1`,
       [
         matchId,
         state.version,
-        finished ? 'finished' : 'playing',
+        status,
         state.currentPlayer,
         state.turn,
         turnChanged,

@@ -1,5 +1,6 @@
 import type { FastifyBaseLogger } from 'fastify';
 import type pg from 'pg';
+import { AdminService } from './admin/admin-service.js';
 import { AuthService } from './auth/auth-service.js';
 import { createTokenIssuer } from './auth/tokens.js';
 import type { Clock } from './clock.js';
@@ -46,7 +47,9 @@ export async function createServices(deps: {
     db,
     clock,
     leaseMs: config.WS_HEARTBEAT_TIMEOUT_MS + config.WS_HEARTBEAT_INTERVAL_MS,
+    replicaId: config.REPLICA_ID,
   });
+  const rooms = new RoomsService({ db, store, bus });
   return {
     tokens,
     store,
@@ -55,7 +58,8 @@ export async function createServices(deps: {
     ephemeralJwtKey: tokens.ephemeralKey,
     tickets: new TicketStore(redis, config.WS_TICKET_TTL_S),
     auth: new AuthService({ db, tokens, clock, refreshTtlSeconds: config.REFRESH_TOKEN_TTL_S }),
-    rooms: new RoomsService({ db, store, bus }),
+    rooms,
+    admin: new AdminService({ db, store, rooms, presence, bus, clock, log }),
     matches: new MatchesService({ db, store }),
     matchmaking: new MatchmakingService({
       db,

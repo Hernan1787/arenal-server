@@ -27,14 +27,15 @@ const handIds = (state: GameState, playerId: PlayerId): Set<string> =>
 /** Elige una intención al azar entre las que podría generar el sistema o un jugador honesto. */
 function randomIntent(state: GameState, chooser: Rng): Intent {
   const current = state.currentPlayer;
-  const roll = chooser.int(0, 99);
+  const roll = chooser.int(0, 999);
+  if (roll === 0) return { type: 'terminate' };
   const alive = state.players.filter((p) => !p.eliminated);
-  if (roll < 3) {
+  if (roll < 30) {
     const leaver = alive[chooser.int(0, alive.length - 1)];
     if (leaver !== undefined) return { type: 'abandon', playerId: leaver.id };
   }
   if (current === null) throw new Error('Partida en curso sin jugador de turno');
-  if (roll < 10) return { type: 'turn_timeout', playerId: current, turn: state.turn };
+  if (roll < 100) return { type: 'turn_timeout', playerId: current, turn: state.turn };
   const hand = state.players.find((p) => p.id === current)?.hand ?? [];
   const card = hand[chooser.int(0, hand.length - 1)];
   if (card === undefined) throw new Error('El jugador de turno no tiene cartas');

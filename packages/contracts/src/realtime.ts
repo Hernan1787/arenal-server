@@ -38,6 +38,9 @@ const EliminationReason = z.enum(['lives', 'abandon']);
 export const MatchResultSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('winner'), winner: PlayerId, reason: z.enum(['last_standing', 'most_lives']) }),
   z.object({ kind: z.literal('draw'), players: z.array(PlayerId), reason: z.enum(['tied_lives', 'no_players']) }),
+  z
+    .object({ kind: z.literal('aborted'), reason: z.literal('admin') })
+    .describe('Un administrador terminó la partida: no hay ganador'),
 ]);
 
 export const PlayerViewSchema = z

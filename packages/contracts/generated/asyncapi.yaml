@@ -2,7 +2,7 @@
 asyncapi: 3.0.0
 info:
   title: Arenal — protocolo en tiempo real
-  version: 0.2.0
+  version: 0.3.0
   description: |-
     Protocolo WebSocket del servidor de Arenal, versión 1.
 
@@ -15,6 +15,9 @@ info:
     asigna una partida estando conectado (una sala que arranca o la cola), también recibe su `snapshot`.
     Después llegan los `event` de esa partida con `seq` consecutivos; el servidor rellena cualquier hueco antes
     de seguir. Si el cliente pierde la conexión, reconecta con un ticket nuevo y recibe el estado actual.
+
+    Administración: si un administrador termina la partida, llega un `MatchEnded` con resultado `aborted`. Si
+    suspende una cuenta, sus conexiones abiertas se cierran con 4003 en todas las réplicas.
 
     Límites: 3 conexiones por usuario (la cuarta se cierra con 4029) y 10 mensajes por segundo con ráfagas de 20
     (los excedentes reciben `RATE_LIMITED`).
@@ -750,6 +753,18 @@ components:
                         - kind
                         - players
                         - reason
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          const: aborted
+                        reason:
+                          type: string
+                          const: admin
+                      required:
+                        - kind
+                        - reason
+                      description: "Un administrador terminó la partida: no hay ganador"
               required:
                 - type
                 - result
@@ -1021,6 +1036,18 @@ components:
                         - kind
                         - players
                         - reason
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          const: aborted
+                        reason:
+                          type: string
+                          const: admin
+                      required:
+                        - kind
+                        - reason
+                      description: "Un administrador terminó la partida: no hay ganador"
                 - type: "null"
           required:
             - matchId

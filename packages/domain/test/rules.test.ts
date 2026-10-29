@@ -258,6 +258,31 @@ describe('abandono', () => {
   });
 });
 
+describe('terminar por administración', () => {
+  it('cierra la partida sin ganador y nadie queda de turno', () => {
+    const { state } = setupMatch({ hands: { ana: [stone(1)], beto: [stone(2)] }, limit: 20 });
+    const { state: after, events } = act(state, { type: 'terminate' });
+    expect(types(events)).toEqual(['MatchEnded']);
+    expect(after.status).toBe('finished');
+    expect(after.result).toEqual({ kind: 'aborted', reason: 'admin' });
+    expect(after.currentPlayer).toBeNull();
+  });
+
+  it('después de terminarla ya no se puede jugar', () => {
+    const { state } = setupMatch({ hands: { ana: [stone(1)], beto: [stone(2)] }, limit: 20 });
+    const after = act(state, { type: 'terminate' }).state;
+    const card = player(after, 'ana').hand[0];
+    expect(errorCode(after, { type: 'play_card', playerId: 'ana', cardId: card?.id ?? '' })).toBe('MATCH_FINISHED');
+  });
+
+  it('rechaza terminar una partida que no empezó o que ya terminó', () => {
+    expect(errorCode(createMatch('m', ['ana', 'beto']), { type: 'terminate' })).toBe('MATCH_NOT_STARTED');
+    const { state } = setupMatch({ hands: { ana: [stone(1)], beto: [stone(1)] }, limit: 20 });
+    const finished = act(state, { type: 'abandon', playerId: 'beto' }).state;
+    expect(errorCode(finished, { type: 'terminate' })).toBe('MATCH_FINISHED');
+  });
+});
+
 describe('pureza', () => {
   it('decide no modifica el estado y con la misma semilla produce los mismos eventos', () => {
     const initial = deepFreeze(createMatch('m1', ['ana', 'beto', 'caro']));

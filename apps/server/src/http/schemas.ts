@@ -173,6 +173,91 @@ export const MatchReplay = named(
   }),
 );
 
+// --- Administración ------------------------------------------------------------------------
+
+export const AdminActionBody = z
+  .object({ reason: z.string().trim().min(3).max(500).describe('Motivo de la acción; queda en la auditoría') })
+  .strict();
+
+export const AuditQuery = PageQuery.extend({
+  targetId: Uuid.optional().describe('Solo las acciones sobre esta partida o este usuario'),
+});
+
+export const AdminMatch = named(
+  'AdminMatch',
+  z
+    .object({
+      matchId: Uuid,
+      origin: z.enum(['room', 'matchmaking']),
+      seq: z.int(),
+      turn: z.int(),
+      currentPlayer: Uuid.nullable(),
+      turnDeadline: z.iso.datetime().nullable(),
+      createdAt: z.iso.datetime(),
+      players: z.array(
+        z.object({
+          id: Uuid,
+          displayName: z.string(),
+          inGame: z.boolean().describe('false si ya quedó eliminado'),
+          connections: z.int().describe('Conexiones WebSocket abiertas en todas las réplicas'),
+          disconnectedAt: z.iso.datetime().nullable().describe('Desde cuándo no tiene conexiones; corre la gracia'),
+        }),
+      ),
+    })
+    .describe('Partida en curso. Solo datos públicos: ni manos, ni mazo, ni límite.'),
+);
+export const AdminMatchPage = pageOf(AdminMatch);
+
+export const ConnectionsOverview = named(
+  'ConnectionsOverview',
+  z.object({
+    total: z.int().describe('Conexiones abiertas en todas las réplicas'),
+    truncated: z.boolean().describe('true si hay más conexiones de las listadas (máximo 1000)'),
+    replicas: z.array(z.object({ replica: z.string(), connections: z.int() })),
+    users: z.array(
+      z.object({ userId: Uuid, displayName: z.string(), connections: z.int(), activeMatchId: Uuid.nullable() }),
+    ),
+  }),
+);
+
+export const AdminUser = named(
+  'AdminUser',
+  z.object({
+    id: Uuid,
+    email: z.string(),
+    displayName: z.string(),
+    role: z.enum(['player', 'admin']),
+    createdAt: z.iso.datetime(),
+    suspendedAt: z.iso.datetime().nullable(),
+    activeMatchId: Uuid.nullable(),
+    connections: z.int(),
+  }),
+);
+
+export const TerminatedMatch = named(
+  'TerminatedMatch',
+  z.object({ matchId: Uuid, seq: z.int().describe('Secuencia del evento MatchEnded'), status: z.literal('aborted') }),
+);
+
+export const AuditEntry = named(
+  'AuditEntry',
+  z.object({
+    id: Uuid,
+    actor: z
+      .object({ id: Uuid, displayName: z.string() })
+      .nullable()
+      .describe('null si la acción vino de la línea de comandos'),
+    action: z.enum(['match.terminate', 'user.suspend', 'user.reinstate', 'user.grant_admin', 'user.revoke_admin']),
+    targetType: z.enum(['match', 'user']),
+    targetId: Uuid,
+    reason: z.string(),
+    details: z.record(z.string(), z.unknown()),
+    requestId: z.string().nullable().describe('ID de la solicitud, para cruzar con los logs'),
+    createdAt: z.iso.datetime(),
+  }),
+);
+export const AuditPage = pageOf(AuditEntry);
+
 /** Respuestas de error comunes para documentar en cada ruta. */
 export const errors = (...codes: (400 | 401 | 403 | 404 | 409 | 429)[]) =>
   Object.fromEntries(codes.map((c) => [c, Problem])) as Record<number, typeof Problem>;

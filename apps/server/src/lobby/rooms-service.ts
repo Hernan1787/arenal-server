@@ -144,21 +144,43 @@ export class RoomsService {
   async leave(roomId: string, userId: string): Promise<void> {
     await withTransaction(this.deps.db, async (tx) => {
       const room = await this.lockRoom(tx, roomId);
-      const removed = await tx.query('DELETE FROM room_members WHERE room_id = $1 AND user_id = $2', [roomId, userId]);
-      if (room === undefined || removed.rowCount !== 1) throw notFound('La sala');
-      if (room.status !== 'waiting') throw conflict('ROOM_NOT_OPEN', 'La sala ya no está esperando jugadores');
-
-      const remaining = await this.members(tx, roomId);
-      const nextHost = remaining[0]?.userId;
-      await tx.query(
-        `UPDATE rooms SET member_count = member_count - 1,
-                          status = CASE WHEN member_count - 1 = 0 THEN 'closed' ELSE status END,
-                          host_id = COALESCE($2, host_id),
-                          updated_at = now()
-          WHERE id = $1`,
-        [roomId, room.host_id === userId ? (nextHost ?? null) : null],
-      );
+      if (room === undefined || !(await this.removeMember(tx, room, userId))) throw notFound('La sala');
     });
+  }
+
+  /**
+   * Saca al usuario de la sala en la que esté, dentro de la transacción del llamador (se usa
+   * al suspender una cuenta). Devuelve el ID de la sala, o `null` si no estaba en ninguna.
+   */
+  async removeFromAnyRoom(tx: Tx, userId: string): Promise<string | null> {
+    const { rows } = await tx.query<{ room_id: string }>('SELECT room_id FROM room_members WHERE user_id = $1', [
+      userId,
+    ]);
+    const roomId = rows[0]?.room_id;
+    if (roomId === undefined) return null;
+    const room = await this.lockRoom(tx, roomId);
+    // Entre la lectura y el bloqueo la sala pudo arrancar; entonces ya no hay nada que sacar.
+    if (room === undefined) return null;
+    return (await this.removeMember(tx, room, userId)) ? roomId : null;
+  }
+
+  /** Con la sala bloqueada: quita al miembro, pasa el anfitrión al siguiente y cierra la sala si queda vacía. */
+  private async removeMember(tx: Tx, room: RoomRow, userId: string): Promise<boolean> {
+    const removed = await tx.query('DELETE FROM room_members WHERE room_id = $1 AND user_id = $2', [room.id, userId]);
+    if (removed.rowCount !== 1) return false;
+    if (room.status !== 'waiting') throw conflict('ROOM_NOT_OPEN', 'La sala ya no está esperando jugadores');
+
+    const remaining = await this.members(tx, room.id);
+    const nextHost = remaining[0]?.userId;
+    await tx.query(
+      `UPDATE rooms SET member_count = member_count - 1,
+                        status = CASE WHEN member_count - 1 = 0 THEN 'closed' ELSE status END,
+                        host_id = COALESCE($2, host_id),
+                        updated_at = now()
+        WHERE id = $1`,
+      [room.id, room.host_id === userId ? (nextHost ?? null) : null],
+    );
+    return true;
   }
 
   /**
