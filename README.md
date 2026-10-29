@@ -10,20 +10,21 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 
 ## Estado
 
-| Parte | Estado |
-| --- | --- |
-| Motor de reglas (`packages/domain`) | Listo, con pruebas unitarias y de propiedades |
-| Contrato en tiempo real (`packages/contracts`) | v0: mensajes, errores y códigos de cierre; genera AsyncAPI 3.0 |
-| Usuarios | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256 |
-| Salas | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica |
-| Emparejamiento | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas |
-| Partidas | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición |
-| API REST | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details |
-| WebSocket, turnos con temporizador, reconexión | Pendiente |
-| Difusión entre réplicas por Redis | Pendiente |
-| Administración | Pendiente |
-| Infraestructura en Azure (Bicep) y despliegue | Pendiente |
-| Prueba de carga | Pendiente |
+| Parte                                          | Estado                                                                                                           |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| Motor de reglas (`packages/domain`)            | Listo, con pruebas unitarias y de propiedades                                                                    |
+| Contrato en tiempo real (`packages/contracts`) | v0: mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                   |
+| Usuarios                                       | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256                                         |
+| Salas                                          | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica            |
+| Emparejamiento                                 | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas                               |
+| Partidas                                       | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición |
+| API REST                                       | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details                                                     |
+| Tiempo real                                    | WebSocket con ticket de un solo uso, heartbeat, límites por conexión, snapshot al conectar y eventos en orden    |
+| Reloj del servidor                             | Turnos con temporizador y acción por defecto; periodo de gracia y abandono                                       |
+| Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                    |
+| Administración                                 | Pendiente                                                                                                        |
+| Infraestructura en Azure (Bicep) y despliegue  | Pendiente                                                                                                        |
+| Prueba de carga                                | Pendiente                                                                                                        |
 
 URL pública en Azure: pendiente.
 
@@ -56,7 +57,7 @@ pnpm typecheck         # TypeScript estricto
 pnpm contracts:check   # AsyncAPI y OpenAPI generados están al día con el código
 
 docker compose up -d postgres redis
-pnpm test:integration  # pruebas contra Postgres real: concurrencia, idempotencia, durabilidad
+pnpm test:integration  # contra Postgres y Redis reales: concurrencia, WebSocket, varias réplicas
 pnpm dev               # servidor con recarga en http://localhost:8080
 ```
 
@@ -72,6 +73,7 @@ apps/server
   src/auth           contraseñas (Argon2id), JWT y refresh tokens
   src/lobby          salas y cola de emparejamiento
   src/matches        persistencia de partidas: orden, idempotencia, historial y repetición
+  src/realtime       WebSocket, tickets, presencia, reparto entre réplicas y reloj del servidor
   src/http           rutas, esquemas de la API, guardia de autenticación, Problem Details
   src/db             migraciones y transacciones
   test/integration   pruebas contra Postgres real
@@ -88,8 +90,9 @@ de ESLint y una prueba de arquitectura rompen el build si alguien lo intenta. El
 - **REST:** OpenAPI 3.1 en `/docs` (interfaz) y `/docs/json`. Copia versionada en
   [`packages/contracts/generated/openapi.json`](packages/contracts/generated/openapi.json); se genera desde las
   rutas reales con `pnpm contracts:generate` y una prueba falla si quedó desactualizada.
-- **Tiempo real:** [`packages/contracts/generated/asyncapi.yaml`](packages/contracts/generated/asyncapi.yaml),
-  generado desde los esquemas Zod. No se edita a mano.
+- **Tiempo real:** `wss://<host>/v1/realtime?ticket=…`, con el ticket de `POST /v1/realtime/tickets`. Contrato en
+  [`packages/contracts/generated/asyncapi.yaml`](packages/contracts/generated/asyncapi.yaml), generado desde los
+  esquemas Zod. No se edita a mano.
 - **Errores HTTP:** Problem Details (RFC 9457). Catálogo en [docs/problems.md](docs/problems.md).
 
 ## Decisiones de arquitectura
@@ -102,3 +105,4 @@ En [docs/adr](docs/adr):
 4. [WebSocket con `ws` en lugar de Socket.IO](docs/adr/0004-websocket-con-ws.md)
 5. [Salas y cola de emparejamiento en Postgres](docs/adr/0005-salas-y-cola-en-postgres.md)
 6. [Autenticación propia con JWT ES256 y refresh rotativo](docs/adr/0006-autenticacion-propia.md)
+7. [Tiempo real entre réplicas: Redis para avisar, Postgres para no perder nada](docs/adr/0007-tiempo-real-entre-replicas.md)

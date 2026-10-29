@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Arenal — API REST",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "description": "API REST del servidor de Arenal: usuarios, salas, emparejamiento, partidas e historial.\n\nTodo lo que pasa durante una partida (jugadas, eventos, reconexión) va por WebSocket y está\ndocumentado en el contrato AsyncAPI (`packages/contracts/generated/asyncapi.yaml`).\n\nLos errores siguen RFC 9457 (`application/problem+json`); el catálogo está en `docs/problems.md`."
   },
   "components": {
@@ -313,6 +313,30 @@
               "state"
             ]
           }
+        ]
+      },
+      "RealtimeTicketInput": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "description": "Se manda como ?ticket=… al abrir el WebSocket; sirve una sola vez"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Segundos de vida del ticket"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta del WebSocket"
+          }
+        },
+        "required": [
+          "ticket",
+          "expiresIn",
+          "path"
         ]
       },
       "PlayerViewInput": {
@@ -1558,6 +1582,31 @@
             "additionalProperties": false
           }
         ]
+      },
+      "RealtimeTicket": {
+        "type": "object",
+        "properties": {
+          "ticket": {
+            "type": "string",
+            "description": "Se manda como ?ticket=… al abrir el WebSocket; sirve una sola vez"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Segundos de vida del ticket"
+          },
+          "path": {
+            "type": "string",
+            "description": "Ruta del WebSocket"
+          }
+        },
+        "required": [
+          "ticket",
+          "expiresIn",
+          "path"
+        ],
+        "additionalProperties": false
       },
       "PlayerView": {
         "type": "object",
@@ -3818,6 +3867,62 @@
         }
       }
     },
+    "/v1/realtime/tickets": {
+      "post": {
+        "summary": "Pedir un ticket para abrir el WebSocket",
+        "tags": [
+          "Tiempo real"
+        ],
+        "description": "Ticket aleatorio de un solo uso y vida corta. Se usa una vez en /v1/realtime?ticket=… para abrir la conexión; el protocolo está en el contrato AsyncAPI.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RealtimeTicket"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/matches/{id}": {
       "get": {
         "summary": "Estado visible de una partida",
@@ -3994,6 +4099,9 @@
     },
     {
       "name": "Emparejamiento"
+    },
+    {
+      "name": "Tiempo real"
     },
     {
       "name": "Partidas"

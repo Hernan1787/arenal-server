@@ -12,10 +12,19 @@ async function startMatch(): Promise<{ matchId: string; players: TestUser[] }> {
   const players = await registerUsers(h.app, 2);
   const [ana, beto] = players;
   if (ana === undefined || beto === undefined) throw new Error('faltan usuarios');
-  const room = (await h.app.inject({ method: 'POST', url: '/v1/rooms', headers: ana.auth, payload: { visibility: 'public' } })).json<{ id: string }>();
+  const room = (
+    await h.app.inject({ method: 'POST', url: '/v1/rooms', headers: ana.auth, payload: { visibility: 'public' } })
+  ).json<{ id: string }>();
   await h.app.inject({ method: 'POST', url: `/v1/rooms/${room.id}/join`, headers: beto.auth });
   await h.app.inject({ method: 'PUT', url: `/v1/rooms/${room.id}/ready`, headers: ana.auth, payload: { ready: true } });
-  const started = (await h.app.inject({ method: 'PUT', url: `/v1/rooms/${room.id}/ready`, headers: beto.auth, payload: { ready: true } })).json<{ matchId: string }>();
+  const started = (
+    await h.app.inject({
+      method: 'PUT',
+      url: `/v1/rooms/${room.id}/ready`,
+      headers: beto.auth,
+      payload: { ready: true },
+    })
+  ).json<{ matchId: string }>();
   return { matchId: started.matchId, players };
 }
 
@@ -32,15 +41,22 @@ describe('jugadas: orden, idempotencia y rechazo', () => {
   it('una jugada válida guarda sus eventos con secuencia consecutiva', async () => {
     const { matchId } = await startMatch();
     const turn = await currentTurn(matchId);
-    const result = await h.services.store.apply(matchId, { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId }, {
-      moveId: randomUUID(),
-      actorId: turn.playerId,
-      expectedSeq: turn.seq,
-    });
+    const result = await h.services.store.apply(
+      matchId,
+      { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId },
+      {
+        moveId: randomUUID(),
+        actorId: turn.playerId,
+        expectedSeq: turn.seq,
+      },
+    );
     if (result.kind !== 'applied') throw new Error(JSON.stringify(result));
     expect(result.events.map((e) => e.seq)).toEqual(result.events.map((_, i) => turn.seq + i + 1));
 
-    const { rows } = await h.db.query<{ seq: number }>('SELECT seq FROM match_events WHERE match_id = $1 ORDER BY seq', [matchId]);
+    const { rows } = await h.db.query<{ seq: number }>(
+      'SELECT seq FROM match_events WHERE match_id = $1 ORDER BY seq',
+      [matchId],
+    );
     expect(rows.map((r) => r.seq)).toEqual(Array.from({ length: result.seq }, (_, i) => i + 1));
   });
 
@@ -56,18 +72,24 @@ describe('jugadas: orden, idempotencia y rechazo', () => {
     expect(first.kind).toBe('applied');
     expect(again).toEqual({ kind: 'duplicate', seq: first.kind === 'applied' ? first.seq : -1 });
 
-    const { rows } = await h.db.query<{ n: string }>('SELECT count(*) AS n FROM match_moves WHERE match_id = $1', [matchId]);
+    const { rows } = await h.db.query<{ n: string }>('SELECT count(*) AS n FROM match_moves WHERE match_id = $1', [
+      matchId,
+    ]);
     expect(rows[0]?.n).toBe('1');
   });
 
   it('una jugada sobre una versión vieja se rechaza con STALE_STATE', async () => {
     const { matchId } = await startMatch();
     const turn = await currentTurn(matchId);
-    const result = await h.services.store.apply(matchId, { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId }, {
-      moveId: randomUUID(),
-      actorId: turn.playerId,
-      expectedSeq: turn.seq - 1,
-    });
+    const result = await h.services.store.apply(
+      matchId,
+      { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId },
+      {
+        moveId: randomUUID(),
+        actorId: turn.playerId,
+        expectedSeq: turn.seq - 1,
+      },
+    );
     expect(result).toMatchObject({ kind: 'rejected', code: 'STALE_STATE', seq: turn.seq });
   });
 
@@ -76,7 +98,11 @@ describe('jugadas: orden, idempotencia y rechazo', () => {
     const turn = await currentTurn(matchId);
     const other = players.find((p) => p.id !== turn.playerId);
     if (other === undefined) throw new Error('falta el otro jugador');
-    const result = await h.services.store.apply(matchId, { type: 'play_card', playerId: other.id, cardId: turn.cardId });
+    const result = await h.services.store.apply(matchId, {
+      type: 'play_card',
+      playerId: other.id,
+      cardId: turn.cardId,
+    });
     expect(result).toMatchObject({ kind: 'rejected', code: 'NOT_YOUR_TURN' });
     expect((await currentTurn(matchId)).seq).toBe(turn.seq);
   });
@@ -91,11 +117,15 @@ describe('jugadas: orden, idempotencia y rechazo', () => {
 
     const results = await Promise.all(
       [a, b].map((card) =>
-        h.services.store.apply(matchId, { type: 'play_card', playerId: turn.playerId, cardId: card.id }, {
-          moveId: randomUUID(),
-          actorId: turn.playerId,
-          expectedSeq: turn.seq,
-        }),
+        h.services.store.apply(
+          matchId,
+          { type: 'play_card', playerId: turn.playerId, cardId: card.id },
+          {
+            moveId: randomUUID(),
+            actorId: turn.playerId,
+            expectedSeq: turn.seq,
+          },
+        ),
       ),
     );
     expect(results.map((r) => (r.kind === 'rejected' ? r.code : r.kind)).sort()).toEqual(['STALE_STATE', 'applied']);
@@ -112,7 +142,10 @@ describe('jugadas: orden, idempotencia y rechazo', () => {
         await h.services.store.apply(matchId, { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId });
       }),
     );
-    const { rows } = await h.db.query<{ seq: number }>('SELECT seq FROM match_events WHERE match_id = $1 ORDER BY seq', [matchId]);
+    const { rows } = await h.db.query<{ seq: number }>(
+      'SELECT seq FROM match_events WHERE match_id = $1 ORDER BY seq',
+      [matchId],
+    );
     expect(rows.map((r) => r.seq)).toEqual(Array.from({ length: rows.length }, (_, i) => i + 1));
     const loaded = await h.services.store.load(matchId);
     expect(loaded?.row.seq).toBe(rows.length);
@@ -141,10 +174,12 @@ describe('durabilidad y fin de partida', () => {
       if (++guard > 2000) throw new Error('la partida no termina');
     }
 
-    const { rows } = await h.db.query<{ status: string; result: unknown; finished_at: Date | null; turn_deadline: Date | null }>(
-      'SELECT status, result, finished_at, turn_deadline FROM matches WHERE id = $1',
-      [matchId],
-    );
+    const { rows } = await h.db.query<{
+      status: string;
+      result: unknown;
+      finished_at: Date | null;
+      turn_deadline: Date | null;
+    }>('SELECT status, result, finished_at, turn_deadline FROM matches WHERE id = $1', [matchId]);
     expect(rows[0]).toMatchObject({ status: 'finished', turn_deadline: null });
     expect(rows[0]?.result).not.toBeNull();
     expect(rows[0]?.finished_at).not.toBeNull();
@@ -160,7 +195,9 @@ describe('durabilidad y fin de partida', () => {
 
     const replay = await h.app.inject({ method: 'GET', url: `/v1/matches/${matchId}/replay`, headers: ana.auth });
     expect(replay.statusCode).toBe(200);
-    const events = replay.json<{ events: { seq: number; event: { type: string; card?: { id: string }; playerId?: string } }[] }>().events;
+    const events = replay.json<{
+      events: { seq: number; event: { type: string; card?: { id: string }; playerId?: string } }[];
+    }>().events;
     expect(events.map((e) => e.seq)).toEqual(Array.from({ length: events.length }, (_, i) => i + 1));
     // En la repetición, las cartas que robó el otro siguen ocultas.
     for (const e of events) {
@@ -169,7 +206,9 @@ describe('durabilidad y fin de partida', () => {
     }
 
     // Ya libres: pueden volver a la cola.
-    expect((await h.app.inject({ method: 'POST', url: '/v1/matchmaking/ticket', headers: ana.auth })).statusCode).toBe(202);
+    expect((await h.app.inject({ method: 'POST', url: '/v1/matchmaking/ticket', headers: ana.auth })).statusCode).toBe(
+      202,
+    );
   });
 });
 
@@ -196,13 +235,20 @@ describe('vistas por jugador', () => {
     const [intruso] = await registerUsers(h.app, 1);
     if (intruso === undefined) throw new Error('falta usuario');
     expectProblem(await h.app.inject({ method: 'GET', url: `/v1/matches/${matchId}`, headers: intruso.auth }), 404);
-    expectProblem(await h.app.inject({ method: 'GET', url: `/v1/matches/${matchId}/replay`, headers: intruso.auth }), 404);
+    expectProblem(
+      await h.app.inject({ method: 'GET', url: `/v1/matches/${matchId}/replay`, headers: intruso.auth }),
+      404,
+    );
   });
 
   it('la repetición de una partida en curso no se entrega', async () => {
     const { matchId, players } = await startMatch();
     const [ana] = players;
     if (ana === undefined) throw new Error('falta usuario');
-    expectProblem(await h.app.inject({ method: 'GET', url: `/v1/matches/${matchId}/replay`, headers: ana.auth }), 409, 'MATCH_IN_PROGRESS');
+    expectProblem(
+      await h.app.inject({ method: 'GET', url: `/v1/matches/${matchId}/replay`, headers: ana.auth }),
+      409,
+      'MATCH_IN_PROGRESS',
+    );
   });
 });

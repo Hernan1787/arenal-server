@@ -35,9 +35,7 @@ export interface RuleError {
   readonly message: string;
 }
 
-export type Result<T> =
-  | { readonly ok: true; readonly value: T }
-  | { readonly ok: false; readonly error: RuleError };
+export type Result<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: RuleError };
 
 export const ok = <T>(value: T): Result<T> => ({ ok: true, value });
 

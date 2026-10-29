@@ -1,17 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createMatch, decide, DEFAULT_CONFIG, replay, type DomainEvent } from '../src/index.js';
-import {
-  act,
-  cool,
-  deepFreeze,
-  errorCode,
-  minRng,
-  player,
-  seededRng,
-  seismo,
-  setupMatch,
-  stone,
-} from './support.js';
+import { act, cool, deepFreeze, errorCode, minRng, player, seededRng, seismo, setupMatch, stone } from './support.js';
 
 const types = (events: readonly DomainEvent[]): string[] => events.map((e) => e.type);
 

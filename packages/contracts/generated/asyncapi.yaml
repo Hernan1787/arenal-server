@@ -2,26 +2,36 @@
 asyncapi: 3.0.0
 info:
   title: Arenal — protocolo en tiempo real
-  version: 0.1.0
+  version: 0.2.0
   description: |-
     Protocolo WebSocket del servidor de Arenal, versión 1.
 
     La conexión se autentica en el handshake con un ticket de un solo uso que dura 30 segundos
-    (se pide con `POST /v1/realtime/tickets`). Sin ticket válido el servidor responde 401 y no abre el socket.
+    (se pide con `POST /v1/realtime/tickets`). Si el handshake no pasa, el servidor responde por HTTP en
+    Problem Details y no abre el socket: 401 sin ticket válido, 403 con un `Origin` no permitido o una cuenta
+    suspendida, 503 si la réplica se está apagando.
+
+    Al conectarse, el servidor manda un `snapshot` de la partida en curso del jugador, si tiene una. Si se le
+    asigna una partida estando conectado (una sala que arranca o la cola), también recibe su `snapshot`.
+    Después llegan los `event` de esa partida con `seq` consecutivos; el servidor rellena cualquier hueco antes
+    de seguir. Si el cliente pierde la conexión, reconecta con un ticket nuevo y recibe el estado actual.
+
+    Límites: 3 conexiones por usuario (la cuarta se cierra con 4029) y 10 mensajes por segundo con ráfagas de 20
+    (los excedentes reciben `RATE_LIMITED`).
     Cada mensaje del cliente pesa como máximo 4096 bytes y se valida contra su esquema.
     El servidor manda ping cada 15 segundos; si no recibe pong en 30, cierra con 4000.
 
     **Códigos de cierre**
 
     - **1000**: Cierre normal: el jugador salió de la partida.
-    - **1008**: Origen no permitido o violación de política.
+    - **1008**: Violación de política.
     - **1009**: Mensaje más grande que 4096 bytes.
     - **1012**: La réplica se está reiniciando: reconectar y mandar resume.
     - **4000**: No respondió al heartbeat a tiempo.
     - **4003**: Cuenta suspendida o sin permiso para esta partida.
     - **4029**: Demasiadas conexiones o demasiados mensajes.
 
-    **Códigos de error**: `NOT_A_PLAYER`, `PLAYER_ELIMINATED`, `NOT_YOUR_TURN`, `CARD_NOT_IN_HAND`, `MATCH_NOT_STARTED`, `MATCH_FINISHED`, `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `STALE_STATE`, `MATCH_NOT_FOUND`, `RATE_LIMITED`, `INTERNAL`
+    **Códigos de error**: `NOT_A_PLAYER`, `PLAYER_ELIMINATED`, `NOT_YOUR_TURN`, `CARD_NOT_IN_HAND`, `MATCH_NOT_STARTED`, `MATCH_FINISHED`, `INVALID_MESSAGE`, `UNSUPPORTED_VERSION`, `STALE_STATE`, `MATCH_NOT_FOUND`, `MOVE_ID_CONFLICT`, `RATE_LIMITED`, `INTERNAL`
 servers:
   local:
     host: localhost:8080
@@ -208,7 +218,7 @@ components:
     Snapshot:
       name: Snapshot
       title: Estado visible
-      summary: servidor → cliente. Estado completo visible para el jugador. Se manda al conectarse o al reconectar.
+      summary: servidor → cliente. Estado completo visible para el jugador. Se manda al conectarse (si tiene una partida en curso), al responder un resume y cuando se le asigna una partida nueva estando conectado.
       contentType: application/json
       payload:
         $ref: "#/components/schemas/Snapshot"
@@ -1034,7 +1044,7 @@ components:
         - matchId
         - seq
         - view
-      description: Estado completo visible para el jugador. Se manda al conectarse o al reconectar.
+      description: Estado completo visible para el jugador. Se manda al conectarse (si tiene una partida en curso), al responder un resume y cuando se le asigna una partida nueva estando conectado.
     Error:
       type: object
       properties:
@@ -1065,6 +1075,7 @@ components:
             - UNSUPPORTED_VERSION
             - STALE_STATE
             - MATCH_NOT_FOUND
+            - MOVE_ID_CONFLICT
             - RATE_LIMITED
             - INTERNAL
         message:

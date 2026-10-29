@@ -4,7 +4,8 @@ import pg from 'pg';
 import { buildApp } from '../src/app.js';
 import { systemClock } from '../src/clock.js';
 import { loadConfig } from '../src/config.js';
-import { createServices } from '../src/services.js';
+import { createRedisClient } from '../src/infra/redis.js';
+import { createServices, silentLog } from '../src/services.js';
 
 /**
  * Genera el contrato OpenAPI 3.1 a partir de las rutas reales. El pool nunca se conecta:
@@ -15,7 +16,15 @@ const outFile = join(serverDir, '..', '..', 'packages', 'contracts', 'generated'
 const { version } = JSON.parse(readFileSync(join(serverDir, 'package.json'), 'utf8')) as { version: string };
 
 const pool = new pg.Pool({ max: 1 });
-const services = await createServices(pool, loadConfig({ NODE_ENV: 'test' }), systemClock);
+const config = loadConfig({ NODE_ENV: 'test' });
+// Ni el pool ni Redis llegan a conectarse: construir las rutas no los usa.
+const services = await createServices({
+  db: pool,
+  redis: createRedisClient(config),
+  config,
+  clock: systemClock,
+  log: silentLog,
+});
 const app = await buildApp({ version, checks: {}, lifecycle: { draining: false }, api: services });
 await app.ready();
 writeFileSync(outFile, `${JSON.stringify(app.swagger(), null, 2)}\n`);

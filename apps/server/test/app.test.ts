@@ -122,3 +122,24 @@ describe('azar criptográfico', () => {
     expect(() => cryptoRng.int(5, 1)).toThrow(RangeError);
   });
 });
+
+describe('cuerpos JSON', () => {
+  it('un POST con content-type JSON y cuerpo vacío no falla por el cuerpo', async () => {
+    const instance = await app({});
+    instance.post('/eco', (request) => ({ vacio: request.body === undefined }));
+    const res = await instance.inject({ method: 'POST', url: '/eco', headers: { 'content-type': 'application/json' } });
+    expect(res.json()).toEqual({ vacio: true });
+  });
+
+  it('bloquea __proto__ en el JSON', async () => {
+    const instance = await app({});
+    instance.post('/eco', () => ({ ok: true }));
+    const res = await instance.inject({
+      method: 'POST',
+      url: '/eco',
+      headers: { 'content-type': 'application/json' },
+      payload: '{"__proto__":{"admin":true}}',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

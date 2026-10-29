@@ -15,6 +15,7 @@ import {
 import type { Clock } from '../clock.js';
 import { pgErrorCode, PG_UNIQUE_VIOLATION, withTransaction, type Db, type Tx } from '../db/tx.js';
 import { conflict } from '../errors.js';
+import { noopBus, type EventBus, type SequencedEvent } from '../realtime/bus.js';
 
 export type MatchOrigin = 'room' | 'matchmaking';
 export type MatchStatus = 'playing' | 'finished' | 'aborted';
@@ -36,15 +37,17 @@ export interface MatchRow {
   finished_at: Date | null;
 }
 
-export interface SequencedEvent {
-  readonly seq: number;
-  readonly event: DomainEvent;
-}
+export type { SequencedEvent };
 
 export type ApplyRejection = RuleErrorCode | 'STALE_STATE' | 'MATCH_NOT_FOUND' | 'MOVE_ID_CONFLICT';
 
 export type ApplyResult =
-  | { readonly kind: 'applied'; readonly seq: number; readonly events: readonly SequencedEvent[]; readonly state: GameState }
+  | {
+      readonly kind: 'applied';
+      readonly seq: number;
+      readonly events: readonly SequencedEvent[];
+      readonly state: GameState;
+    }
   | { readonly kind: 'duplicate'; readonly seq: number }
   | { readonly kind: 'rejected'; readonly code: ApplyRejection; readonly message: string; readonly seq: number | null };
 
@@ -63,6 +66,8 @@ export interface MatchStoreDeps {
   readonly rng: Rng;
   readonly config?: ArenalConfig;
   readonly turnTimeoutMs: number;
+  /** Avisa a las demás réplicas de cada jugada confirmada. */
+  readonly bus?: EventBus;
 }
 
 /**
@@ -71,7 +76,11 @@ export interface MatchStoreDeps {
  * jugadas de la misma partida y se procesan de a una, en orden.
  */
 export class MatchStore {
-  constructor(private readonly deps: MatchStoreDeps) {}
+  private readonly bus: EventBus;
+
+  constructor(private readonly deps: MatchStoreDeps) {
+    this.bus = deps.bus ?? noopBus;
+  }
 
   /** Crea una partida dentro de la transacción del llamador (sala que arranca o cola). */
   async create(tx: Tx, origin: MatchOrigin, playerIds: readonly string[]): Promise<{ matchId: string; seq: number }> {
@@ -84,10 +93,11 @@ export class MatchStore {
     if (matchId === undefined) throw new Error('INSERT sin filas');
 
     try {
-      await tx.query(`INSERT INTO match_players (match_id, user_id) SELECT $1, unnest($2::uuid[])`, [
-        matchId,
-        playerIds,
-      ]);
+      // Hasta que se conecten cuentan como desconectados: quien nunca entra cae en abandono.
+      await tx.query(
+        `INSERT INTO match_players (match_id, user_id, disconnected_at) SELECT $1, unnest($2::uuid[]), $3::timestamptz`,
+        [matchId, playerIds, this.deps.clock.now()],
+      );
     } catch (error) {
       if (pgErrorCode(error) === PG_UNIQUE_VIOLATION) {
         throw conflict('ALREADY_IN_MATCH', 'Un jugador ya está en otra partida activa');
@@ -103,11 +113,20 @@ export class MatchStore {
     return { matchId, seq: state.version };
   }
 
-  /** Aplica una intención: bloquea la partida, valida, guarda los eventos y actualiza el resumen. */
-  apply(matchId: string, intent: Intent, options: ApplyOptions = {}): Promise<ApplyResult> {
+  /**
+   * Aplica una intención: bloquea la partida, valida, guarda los eventos y actualiza el
+   * resumen. Después de confirmar, avisa a las réplicas por el bus.
+   */
+  async apply(matchId: string, intent: Intent, options: ApplyOptions = {}): Promise<ApplyResult> {
     if (options.moveId !== undefined && options.actorId === undefined) {
       throw new Error('Una jugada con moveId necesita actorId');
     }
+    const result = await this.applyInTransaction(matchId, intent, options);
+    if (result.kind === 'applied') await this.bus.matchEvents(matchId, result.events);
+    return result;
+  }
+
+  private applyInTransaction(matchId: string, intent: Intent, options: ApplyOptions): Promise<ApplyResult> {
     return withTransaction(this.deps.db, async (tx) => {
       const row = await this.lockMatch(tx, matchId);
       if (row === undefined) {
@@ -166,9 +185,14 @@ export class MatchStore {
   }
 
   async events(matchId: string): Promise<SequencedEvent[]> {
+    return this.eventsBetween(matchId, 0, null);
+  }
+
+  /** Eventos con `afterSeq < seq <= upToSeq` (o hasta el final). Sirve para rellenar huecos. */
+  async eventsBetween(matchId: string, afterSeq: number, upToSeq: number | null): Promise<SequencedEvent[]> {
     const { rows } = await this.deps.db.query<{ seq: number; event: DomainEvent }>(
-      'SELECT seq, event FROM match_events WHERE match_id = $1 ORDER BY seq',
-      [matchId],
+      'SELECT seq, event FROM match_events WHERE match_id = $1 AND seq > $2 AND ($3::int IS NULL OR seq <= $3) ORDER BY seq',
+      [matchId, afterSeq, upToSeq],
     );
     return rows;
   }

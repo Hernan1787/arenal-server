@@ -119,4 +119,14 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX matchmaking_waiting_idx ON matchmaking_tickets (enqueued_at) WHERE status = 'waiting';
     `,
   },
+  {
+    id: '002_presencia',
+    sql: /* sql */ `
+      -- Desde cuándo el jugador no tiene ninguna conexión abierta. Al crear la partida empieza
+      -- en la hora de creación: quien nunca se conecta también cae en la regla de abandono.
+      ALTER TABLE match_players ADD COLUMN disconnected_at timestamptz;
+      UPDATE match_players SET disconnected_at = now() WHERE active;
+      CREATE INDEX match_players_disconnected_idx ON match_players (disconnected_at) WHERE active AND disconnected_at IS NOT NULL;
+    `,
+  },
 ];

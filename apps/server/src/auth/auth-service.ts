@@ -74,7 +74,10 @@ export class AuthService {
       normalizeEmail(input.email),
     ]);
     const user = rows[0];
-    const valid = user === undefined ? await verifyAgainstDummy(input.password) : await verifyPassword(user.password_hash, input.password);
+    const valid =
+      user === undefined
+        ? await verifyAgainstDummy(input.password)
+        : await verifyPassword(user.password_hash, input.password);
     if (user === undefined || !valid) throw unauthorized();
     if (user.suspended_at !== null) throw new AppError('forbidden', 'La cuenta está suspendida', 'ACCOUNT_SUSPENDED');
     return this.startSession(user, randomUUID());
@@ -94,11 +97,13 @@ export class AuthService {
         expires_at: Date;
         used_at: Date | null;
         revoked_at: Date | null;
-      }>('SELECT id, user_id, family_id, expires_at, used_at, revoked_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE', [
-        hashRefreshToken(refreshToken),
-      ]);
+      }>(
+        'SELECT id, user_id, family_id, expires_at, used_at, revoked_at FROM refresh_tokens WHERE token_hash = $1 FOR UPDATE',
+        [hashRefreshToken(refreshToken)],
+      );
       const token = rows[0];
-      if (token === undefined || token.revoked_at !== null || token.expires_at <= now) return { kind: 'invalid' } as const;
+      if (token === undefined || token.revoked_at !== null || token.expires_at <= now)
+        return { kind: 'invalid' } as const;
       if (token.used_at !== null) {
         await tx.query('UPDATE refresh_tokens SET revoked_at = $2 WHERE family_id = $1 AND revoked_at IS NULL', [
           token.family_id,
@@ -114,7 +119,11 @@ export class AuthService {
       return { kind: 'ok', session } as const;
     });
     if (outcome.kind !== 'ok') {
-      throw unauthorized(outcome.kind === 'reused' ? 'El refresh token ya se había usado; la sesión se cerró' : 'Refresh token inválido o vencido');
+      throw unauthorized(
+        outcome.kind === 'reused'
+          ? 'El refresh token ya se había usado; la sesión se cerró'
+          : 'Refresh token inválido o vencido',
+      );
     }
     return outcome.session;
   }
@@ -136,10 +145,10 @@ export class AuthService {
   }
 
   async updateProfile(userId: string, input: { displayName: string }): Promise<Profile> {
-    const { rows } = await this.deps.db.query<UserRow>(
-      'UPDATE users SET display_name = $2 WHERE id = $1 RETURNING *',
-      [userId, input.displayName.trim()],
-    );
+    const { rows } = await this.deps.db.query<UserRow>('UPDATE users SET display_name = $2 WHERE id = $1 RETURNING *', [
+      userId,
+      input.displayName.trim(),
+    ]);
     const user = rows[0];
     if (user === undefined) throw notFound('El usuario');
     return toProfile(user);

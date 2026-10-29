@@ -25,10 +25,10 @@ por defecto de `DEFAULT_CONFIG`; todos son configurables.
 
 El jugador de turno juega exactamente una carta y roba una:
 
-| Carta | Efecto |
-| --- | --- |
-| Piedra *n* | La presión sube *n*. |
-| Enfriar | La presión baja 3, sin quedar por debajo de 0. |
+| Carta      | Efecto                                                                                                                       |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Piedra _n_ | La presión sube _n_.                                                                                                         |
+| Enfriar    | La presión baja 3, sin quedar por debajo de 0.                                                                               |
 | Sismógrafo | La presión no cambia. El servidor le dice **solo a ese jugador** si al límite le faltan 4 o menos («cerca») o más («lejos»). |
 
 Las cartas jugadas son públicas. Si el mazo se acaba, el servidor baraja el descarte y se sigue robando.
@@ -55,15 +55,15 @@ Estas reglas las aplica el servidor; el cliente nunca decide tiempos.
 
 ## Qué ve cada quien
 
-| Información | Quién la ve |
-| --- | --- |
-| Mano de un jugador | Solo su dueño |
-| Cuántas cartas tiene cada uno | Todos |
-| Orden del mazo | Nadie |
-| Límite de la ronda en curso | Nadie |
-| Límite de una ronda terminada | Todos |
-| Resultado del sismógrafo | Solo quien lo jugó |
-| Cartas de un jugador eliminado | Nadie |
+| Información                    | Quién la ve        |
+| ------------------------------ | ------------------ |
+| Mano de un jugador             | Solo su dueño      |
+| Cuántas cartas tiene cada uno  | Todos              |
+| Orden del mazo                 | Nadie              |
+| Límite de la ronda en curso    | Nadie              |
+| Límite de una ronda terminada  | Todos              |
+| Resultado del sismógrafo       | Solo quien lo jugó |
+| Cartas de un jugador eliminado | Nadie              |
 
 ## Originalidad
 

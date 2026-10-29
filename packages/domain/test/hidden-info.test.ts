@@ -151,7 +151,12 @@ describe('invariantes en partidas al azar', () => {
       expect(final.result).not.toBeNull();
       const first = steps[0];
       if (first === undefined) throw new Error('sin eventos');
-      expect(replay(first.before, steps.map((s) => s.event))).toEqual(final);
+      expect(
+        replay(
+          first.before,
+          steps.map((s) => s.event),
+        ),
+      ).toEqual(final);
     }
   });
 });

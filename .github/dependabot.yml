@@ -9,8 +9,8 @@ updates:
         dependency-type: development
     ignore:
       # Los tipos de Node siguen la versión del runtime (Node 24); se suben a mano junto con él.
-      - dependency-name: "@types/node"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
@@ -25,5 +25,5 @@ updates:
     ignore:
       # La imagen se queda en Node 24 LTS. Las versiones impares (25, 27…) tienen soporte corto
       # y el cambio de versión mayor se decide a mano, junto con .nvmrc y el CI.
-      - dependency-name: "node"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: 'node'
+        update-types: ['version-update:semver-major']

@@ -108,7 +108,10 @@ describe('access token', () => {
     const [header, payload, signature] = user.accessToken.split('.');
     const forgedPayload = Buffer.from(JSON.stringify({ sub: user.id, role: 'admin' })).toString('base64url');
     const tampered = `${header ?? ''}.${forgedPayload}.${signature ?? ''}`;
-    expectProblem(await h.app.inject({ method: 'GET', url: '/v1/me', headers: { authorization: `Bearer ${tampered}` } }), 401);
+    expectProblem(
+      await h.app.inject({ method: 'GET', url: '/v1/me', headers: { authorization: `Bearer ${tampered}` } }),
+      401,
+    );
 
     const { privateKey } = await generateKeyPair('ES256');
     const foreign = await new SignJWT({ role: 'admin' })
@@ -118,7 +121,10 @@ describe('access token', () => {
       .setAudience('arenal-api')
       .setExpirationTime('5m')
       .sign(privateKey);
-    expectProblem(await h.app.inject({ method: 'GET', url: '/v1/me', headers: { authorization: `Bearer ${foreign}` } }), 401);
+    expectProblem(
+      await h.app.inject({ method: 'GET', url: '/v1/me', headers: { authorization: `Bearer ${foreign}` } }),
+      401,
+    );
     expect(payload).toBeDefined();
   });
 
@@ -146,7 +152,10 @@ describe('refresh token rotativo', () => {
     expect(first.statusCode).toBe(200);
     const next = first.json<{ refreshToken: string; accessToken: string }>();
     expect(next.refreshToken).not.toBe(user.refreshToken);
-    expect((await h.app.inject({ method: 'GET', url: '/v1/me', headers: { authorization: `Bearer ${next.accessToken}` } })).statusCode).toBe(200);
+    expect(
+      (await h.app.inject({ method: 'GET', url: '/v1/me', headers: { authorization: `Bearer ${next.accessToken}` } }))
+        .statusCode,
+    ).toBe(200);
     expect((await refresh(next.refreshToken)).statusCode).toBe(200);
   });
 
@@ -168,7 +177,11 @@ describe('refresh token rotativo', () => {
 
   it('cerrar sesión invalida el refresh token', async () => {
     const user = await registerUser(h.app);
-    const logout = await h.app.inject({ method: 'POST', url: '/v1/auth/logout', payload: { refreshToken: user.refreshToken } });
+    const logout = await h.app.inject({
+      method: 'POST',
+      url: '/v1/auth/logout',
+      payload: { refreshToken: user.refreshToken },
+    });
     expect(logout.statusCode).toBe(204);
     expectProblem(await refresh(user.refreshToken), 401);
   });
