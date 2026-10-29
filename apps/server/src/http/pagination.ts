@@ -14,7 +14,12 @@ export function decodeCursor(raw: string | undefined): Cursor | undefined {
   if (raw === undefined) return undefined;
   try {
     const parsed: unknown = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
-    if (Array.isArray(parsed) && parsed.length === 2 && typeof parsed[0] === 'string' && typeof parsed[1] === 'string') {
+    if (
+      Array.isArray(parsed) &&
+      parsed.length === 2 &&
+      typeof parsed[0] === 'string' &&
+      typeof parsed[1] === 'string'
+    ) {
       const at = new Date(parsed[0]);
       if (!Number.isNaN(at.getTime()) && /^[0-9a-f-]{36}$/.test(parsed[1])) return { at, id: parsed[1] };
     }
@@ -30,7 +35,12 @@ export interface Page<T> {
 }
 
 /** Con `limit + 1` filas pedidas, decide si hay otra página y arma su cursor. */
-export function toPage<R, T>(rows: readonly R[], limit: number, map: (row: R) => T, cursorOf: (row: R) => Cursor): Page<T> {
+export function toPage<R, T>(
+  rows: readonly R[],
+  limit: number,
+  map: (row: R) => T,
+  cursorOf: (row: R) => Cursor,
+): Page<T> {
   const items = rows.slice(0, limit);
   const last = items.at(-1);
   return {

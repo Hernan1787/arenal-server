@@ -3,7 +3,11 @@ import { expectProblem, registerUsers, useHarness, type TestUser } from './harne
 
 const h = useHarness();
 
-type Status = { state: 'idle' } | { state: 'waiting'; waitedMs: number } | { state: 'matched'; matchId: string } | { state: 'expired' };
+type Status =
+  | { state: 'idle' }
+  | { state: 'waiting'; waitedMs: number }
+  | { state: 'matched'; matchId: string }
+  | { state: 'expired' };
 
 const enqueue = (u: TestUser) => h.app.inject({ method: 'POST', url: '/v1/matchmaking/ticket', headers: u.auth });
 const status = async (u: TestUser): Promise<Status> =>
@@ -51,7 +55,9 @@ describe('cola de emparejamiento', () => {
     const [ana] = await registerUsers(h.app, 1);
     if (ana === undefined) throw new Error('falta usuario');
     await enqueue(ana);
-    expect((await h.app.inject({ method: 'DELETE', url: '/v1/matchmaking/ticket', headers: ana.auth })).statusCode).toBe(204);
+    expect(
+      (await h.app.inject({ method: 'DELETE', url: '/v1/matchmaking/ticket', headers: ana.auth })).statusCode,
+    ).toBe(204);
     expect(await status(ana)).toEqual({ state: 'idle' });
   });
 
@@ -64,7 +70,11 @@ describe('cola de emparejamiento', () => {
 
   it('con 10 entrando a la vez y varios barridos en paralelo, nadie queda en dos partidas', async () => {
     const users = await registerUsers(h.app, 10);
-    await Promise.all([...users.map(enqueue), h.services.matchmaking.runMatchmaker(), h.services.matchmaking.runMatchmaker()]);
+    await Promise.all([
+      ...users.map(enqueue),
+      h.services.matchmaking.runMatchmaker(),
+      h.services.matchmaking.runMatchmaker(),
+    ]);
     h.clock.advance(10_000);
     await Promise.all([h.services.matchmaking.runMatchmaker(), h.services.matchmaking.runMatchmaker()]);
 
@@ -74,7 +84,9 @@ describe('cola de emparejamiento', () => {
     expect(rows).toHaveLength(10);
     expect(rows.every((r) => r.partidas === '1')).toBe(true);
 
-    const sizes = await h.db.query<{ n: string }>('SELECT count(*) AS n FROM match_players GROUP BY match_id ORDER BY n DESC');
+    const sizes = await h.db.query<{ n: string }>(
+      'SELECT count(*) AS n FROM match_players GROUP BY match_id ORDER BY n DESC',
+    );
     // 10 = 4 + 4 + 2: dos llenas y una armada por relleno.
     expect(sizes.rows.map((r) => Number(r.n))).toEqual([4, 4, 2]);
   });

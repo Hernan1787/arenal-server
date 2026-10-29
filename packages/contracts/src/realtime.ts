@@ -6,16 +6,29 @@ export const PROTOCOL_VERSION = 1;
 /** Tamaño máximo de un mensaje entrante, en bytes. El servidor cierra con 1009 si se pasa. */
 export const MAX_CLIENT_MESSAGE_BYTES = 4096;
 
-const MessageId = z.uuid().describe('ID generado por el cliente. Si reenvía el mismo ID, la jugada no se aplica dos veces.');
-const MatchId = z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/);
+const MessageId = z
+  .uuid()
+  .describe('ID generado por el cliente. Si reenvía el mismo ID, la jugada no se aplica dos veces.');
+const MatchId = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/);
 const PlayerId = z.string().min(1).max(64);
-const CardId = z.string().regex(/^c_[0-9a-z]{6}$/).describe('ID opaco de la carta, distinto en cada partida.');
+const CardId = z
+  .string()
+  .regex(/^c_[0-9a-z]{6}$/)
+  .describe('ID opaco de la carta, distinto en cada partida.');
 const Seq = z.int().min(0).describe('Número de secuencia del último evento de la partida.');
 
 // --- Cartas y estado público ------------------------------------------------------------
 
 export const CardSchema = z.discriminatedUnion('kind', [
-  z.object({ id: CardId, kind: z.literal('stone'), value: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]) }),
+  z.object({
+    id: CardId,
+    kind: z.literal('stone'),
+    value: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
+  }),
   z.object({ id: CardId, kind: z.literal('cool') }),
   z.object({ id: CardId, kind: z.literal('seismo') }),
 ]);
@@ -142,6 +155,7 @@ export const ERROR_CODES = [
   'UNSUPPORTED_VERSION',
   'STALE_STATE',
   'MATCH_NOT_FOUND',
+  'MOVE_ID_CONFLICT',
   'RATE_LIMITED',
   'INTERNAL',
 ] as const;
@@ -167,7 +181,9 @@ export const EventMessage = z
     seq: z.int().min(1),
     event: PlayerEventSchema,
   })
-  .describe('Un evento nuevo de la partida. Los `seq` llegan seguidos; un hueco significa que hay que mandar `resume`.');
+  .describe(
+    'Un evento nuevo de la partida. Los `seq` llegan seguidos; un hueco significa que hay que mandar `resume`.',
+  );
 
 export const SnapshotMessage = z
   .object({
@@ -177,7 +193,9 @@ export const SnapshotMessage = z
     seq: Seq,
     view: PlayerViewSchema,
   })
-  .describe('Estado completo visible para el jugador. Se manda al conectarse o al reconectar.');
+  .describe(
+    'Estado completo visible para el jugador. Se manda al conectarse (si tiene una partida en curso), al responder un resume y cuando se le asigna una partida nueva estando conectado.',
+  );
 
 export const ErrorMessage = z
   .object({
@@ -196,7 +214,7 @@ export type ServerMessage = z.infer<typeof ServerMessage>;
 /** Códigos de cierre de la conexión WebSocket. */
 export const CLOSE_CODES = {
   1000: 'Cierre normal: el jugador salió de la partida.',
-  1008: 'Origen no permitido o violación de política.',
+  1008: 'Violación de política.',
   1009: `Mensaje más grande que ${MAX_CLIENT_MESSAGE_BYTES} bytes.`,
   1012: 'La réplica se está reiniciando: reconectar y mandar resume.',
   4000: 'No respondió al heartbeat a tiempo.',

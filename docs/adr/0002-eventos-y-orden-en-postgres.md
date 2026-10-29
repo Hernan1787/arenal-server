@@ -11,13 +11,9 @@ jugada.
 
 ## Decisión
 
-1. El dominio expone tres funciones puras: `decide(estado, intención) → eventos`, `evolve(estado, evento) →
-   estado` y `viewFor(estado, jugador) → vista`. El azar queda registrado dentro de los eventos.
-2. Cada jugada se procesa en una transacción de Postgres que bloquea la fila de la partida (`SELECT … FOR
-   UPDATE`), compara el `expectedSeq` del cliente con la versión actual y guarda los eventos nuevos. La tabla de
-   eventos tiene `UNIQUE (match_id, move_id)` para la idempotencia.
-3. Después del commit, el evento se publica en Redis; cada réplica lo filtra con `projectEvent` para cada
-   jugador conectado a ella.
+1. El dominio expone tres funciones puras: `decide(estado, intención) → eventos`, `evolve(estado, evento) → estado` y `viewFor(estado, jugador) → vista`. El azar queda registrado dentro de los eventos.
+2. Cada jugada se procesa en una transacción de Postgres que bloquea la fila de la partida (`SELECT … FOR UPDATE`), compara el `expectedSeq` del cliente con la versión actual y guarda los eventos nuevos. La tabla `match_moves` registra cada `moveId` para la idempotencia.
+3. Después del commit, los eventos se publican en Redis; cada réplica los filtra con `projectEvent` para cada jugador conectado a ella (ver ADR 0007).
 
 ## Consecuencias
 

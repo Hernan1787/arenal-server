@@ -13,7 +13,12 @@ interface RoomBody {
 }
 
 const createRoom = async (user: TestUser, visibility: 'public' | 'private', capacity = 4): Promise<RoomBody> => {
-  const res = await h.app.inject({ method: 'POST', url: '/v1/rooms', headers: user.auth, payload: { visibility, capacity } });
+  const res = await h.app.inject({
+    method: 'POST',
+    url: '/v1/rooms',
+    headers: user.auth,
+    payload: { visibility, capacity },
+  });
   if (res.statusCode !== 201) throw new Error(res.body);
   return res.json<RoomBody>();
 };
@@ -42,12 +47,15 @@ describe('salas públicas', () => {
     expect(started.status).toBe('started');
     expect(started.matchId).toEqual(expect.any(String));
 
-    const { rows } = await h.db.query<{ user_id: string }>('SELECT user_id FROM match_players WHERE match_id = $1 AND active', [
-      started.matchId,
-    ]);
+    const { rows } = await h.db.query<{ user_id: string }>(
+      'SELECT user_id FROM match_players WHERE match_id = $1 AND active',
+      [started.matchId],
+    );
     expect(rows.map((r) => r.user_id).sort()).toEqual([ana.id, beto.id].sort());
     // La sala arrancada ya no aparece en la lista.
-    expect((await h.app.inject({ method: 'GET', url: '/v1/rooms', headers: beto.auth })).json<{ items: unknown[] }>().items).toEqual([]);
+    expect(
+      (await h.app.inject({ method: 'GET', url: '/v1/rooms', headers: beto.auth })).json<{ items: unknown[] }>().items,
+    ).toEqual([]);
   });
 
   it('una sola persona lista no arranca la sala', async () => {
@@ -72,11 +80,17 @@ describe('salas públicas', () => {
     const room = await createRoom(ana, 'public');
     await join(beto, room.id);
 
-    expect((await h.app.inject({ method: 'POST', url: `/v1/rooms/${room.id}/leave`, headers: ana.auth })).statusCode).toBe(204);
-    expect((await h.app.inject({ method: 'GET', url: `/v1/rooms/${room.id}`, headers: beto.auth })).json<RoomBody>().hostId).toBe(beto.id);
+    expect(
+      (await h.app.inject({ method: 'POST', url: `/v1/rooms/${room.id}/leave`, headers: ana.auth })).statusCode,
+    ).toBe(204);
+    expect(
+      (await h.app.inject({ method: 'GET', url: `/v1/rooms/${room.id}`, headers: beto.auth })).json<RoomBody>().hostId,
+    ).toBe(beto.id);
 
     await h.app.inject({ method: 'POST', url: `/v1/rooms/${room.id}/leave`, headers: beto.auth });
-    expect((await h.app.inject({ method: 'GET', url: `/v1/rooms/${room.id}`, headers: beto.auth })).json<RoomBody>().status).toBe('closed');
+    expect(
+      (await h.app.inject({ method: 'GET', url: `/v1/rooms/${room.id}`, headers: beto.auth })).json<RoomBody>().status,
+    ).toBe('closed');
   });
 });
 
@@ -87,7 +101,9 @@ describe('salas privadas', () => {
     const room = await createRoom(ana, 'private');
     expect(room.inviteCode).toMatch(/^[A-Z2-9]{8}$/);
 
-    expect((await h.app.inject({ method: 'GET', url: '/v1/rooms', headers: beto.auth })).json<{ items: unknown[] }>().items).toEqual([]);
+    expect(
+      (await h.app.inject({ method: 'GET', url: '/v1/rooms', headers: beto.auth })).json<{ items: unknown[] }>().items,
+    ).toEqual([]);
     expectProblem(await h.app.inject({ method: 'GET', url: `/v1/rooms/${room.id}`, headers: beto.auth }), 404);
     expectProblem(await join(beto, room.id), 404);
 
@@ -101,7 +117,12 @@ describe('salas privadas', () => {
     expect(byCode.json<RoomBody>().inviteCode).toBe(room.inviteCode);
 
     expectProblem(
-      await h.app.inject({ method: 'POST', url: '/v1/rooms/join-by-code', headers: caro.auth, payload: { inviteCode: 'ZZZZZZZZ' } }),
+      await h.app.inject({
+        method: 'POST',
+        url: '/v1/rooms/join-by-code',
+        headers: caro.auth,
+        payload: { inviteCode: 'ZZZZZZZZ' },
+      }),
       404,
     );
   });
@@ -117,7 +138,8 @@ describe('capacidad y exclusividad', () => {
     const codes = results.map((r) => r.statusCode);
     expect(codes.filter((c) => c === 200)).toHaveLength(3);
     expect(codes.filter((c) => c === 409)).toHaveLength(7);
-    for (const r of results.filter((x) => x.statusCode === 409)) expect(r.json<{ code: string }>().code).toBe('ROOM_FULL');
+    for (const r of results.filter((x) => x.statusCode === 409))
+      expect(r.json<{ code: string }>().code).toBe('ROOM_FULL');
 
     const { rows } = await h.db.query<{ member_count: number; members: string }>(
       'SELECT member_count, (SELECT count(*) FROM room_members WHERE room_id = $1) AS members FROM rooms WHERE id = $1',
@@ -132,9 +154,17 @@ describe('capacidad y exclusividad', () => {
     const first = await createRoom(ana, 'public');
     const second = await createRoom(beto, 'public');
 
-    expectProblem(await h.app.inject({ method: 'POST', url: '/v1/rooms', headers: ana.auth, payload: { visibility: 'public' } }), 409, 'ALREADY_IN_ROOM');
+    expectProblem(
+      await h.app.inject({ method: 'POST', url: '/v1/rooms', headers: ana.auth, payload: { visibility: 'public' } }),
+      409,
+      'ALREADY_IN_ROOM',
+    );
     expectProblem(await join(ana, second.id), 409, 'ALREADY_IN_ROOM');
-    expectProblem(await h.app.inject({ method: 'POST', url: '/v1/matchmaking/ticket', headers: ana.auth }), 409, 'ALREADY_IN_ROOM');
+    expectProblem(
+      await h.app.inject({ method: 'POST', url: '/v1/matchmaking/ticket', headers: ana.auth }),
+      409,
+      'ALREADY_IN_ROOM',
+    );
     expect(first.id).not.toBe(second.id);
   });
 

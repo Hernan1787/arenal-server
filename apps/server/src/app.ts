@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
+import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
-import Fastify, { type FastifyError, type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
 import {
   hasZodFastifySchemaValidationErrors,
   isResponseSerializationError,
@@ -12,10 +13,11 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod';
+import { pino } from 'pino';
 import { AppError } from './errors.js';
 import { REDACT_PATHS, serializeRequest } from './http/logging.js';
 import { buildProblem, sendProblem } from './http/problem.js';
-import { registerApiRoutes, type ApiServices } from './http/routes.js';
+import { registerApiRoutes, type ApiServices, type RateLimits } from './http/routes.js';
 
 /** Una dependencia que `/health/ready` revisa (Postgres, Redis). Debe fallar lanzando un error. */
 export type HealthCheck = () => Promise<void>;
@@ -29,10 +31,14 @@ export interface AppOptions {
   readonly version: string;
   readonly checks: Readonly<Record<string, HealthCheck>>;
   readonly lifecycle: Lifecycle;
-  readonly logger?: FastifyServerOptions['logger'];
+  /** Logger de pino ya configurado; sin él, la app no escribe logs. */
+  readonly logger?: FastifyBaseLogger;
   readonly checkTimeoutMs?: number;
   /** Servicios de la API v1. Sin ellos la app solo expone las sondas de salud. */
   readonly api?: ApiServices;
+  /** Orígenes de navegador permitidos (CORS). Sin lista, ningún origen cruzado. */
+  readonly allowedOrigins?: readonly string[];
+  readonly rateLimits?: RateLimits;
 }
 
 const BODY_LIMIT_BYTES = 16 * 1024;
@@ -66,7 +72,7 @@ const API_DESCRIPTION = [
 
 export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: options.logger ?? false,
+    ...(options.logger === undefined ? { logger: false } : { loggerInstance: options.logger }),
     bodyLimit: BODY_LIMIT_BYTES,
     // Detrás del ingress de Container Apps: solo se confía en el proxy inmediato.
     trustProxy: (_address, hop) => hop === 0,
@@ -78,10 +84,31 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   app.setSerializerCompiler(serializerCompiler);
   app.decorateRequest('authUser', null);
 
+  // Muchos clientes mandan `content-type: application/json` también en un POST sin cuerpo
+  // (pedir un ticket, entrar a la cola). Un cuerpo vacío cuenta como «sin cuerpo»; el resto
+  // pasa por el parser de Fastify, que bloquea __proto__ y constructor.
+  const jsonParser = app.getDefaultJsonParser('error', 'error');
+  app.removeContentTypeParser('application/json');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
+    const text = typeof body === 'string' ? body : body.toString('utf8');
+    if (text === '') {
+      done(null, undefined);
+      return;
+    }
+    void jsonParser(request, text, done);
+  });
+
   await app.register(helmet, {
     hsts: { maxAge: 31_536_000, includeSubDomains: true },
     contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
     crossOriginResourcePolicy: { policy: 'same-site' },
+  });
+
+  await app.register(cors, {
+    origin: [...(options.allowedOrigins ?? [])],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['authorization', 'content-type'],
+    maxAge: 600,
   });
 
   await app.register(rateLimit, {
@@ -101,6 +128,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
           { name: 'Usuarios' },
           { name: 'Salas' },
           { name: 'Emparejamiento' },
+          { name: 'Tiempo real' },
           { name: 'Partidas' },
           { name: 'Historial' },
         ],
@@ -137,7 +165,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     return { status: 'ready', checks };
   });
 
-  if (options.api !== undefined) registerApiRoutes(app, options.api);
+  if (options.api !== undefined) registerApiRoutes(app, options.api, options.rateLimits);
 
   app.setNotFoundHandler((request, reply) =>
     sendProblem(reply, buildProblem('not-found', { instance: serializeRequest(request)['path'] ?? '' })),
@@ -160,7 +188,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     if (hasZodFastifySchemaValidationErrors(error)) {
       // Se describen los campos y las reglas, nunca los valores que mandó el cliente.
       const detail = error.validation
-        .map((issue) => `${issue.instancePath.replace(/^\//, '').replaceAll('/', '.') || error.validationContext || 'solicitud'}: ${issue.message ?? 'inválido'}`)
+        .map(
+          (issue) =>
+            `${issue.instancePath.replace(/^\//, '').replaceAll('/', '.') || error.validationContext || 'solicitud'}: ${issue.message ?? 'inválido'}`,
+        )
         .join('; ');
       return sendProblem(reply, buildProblem('validation-error', { detail, instance }));
     }
@@ -186,8 +217,10 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   return app;
 }
 
-export const loggerOptions = (level: string): FastifyServerOptions['logger'] => ({
-  level,
-  redact: { paths: REDACT_PATHS, censor: '[oculto]' },
-  serializers: { req: serializeRequest },
-});
+/** Logger del servidor: JSON, sin datos sensibles y con la URL sin query string. */
+export const createLogger = (level: string): FastifyBaseLogger =>
+  pino({
+    level,
+    redact: { paths: REDACT_PATHS, censor: '[oculto]' },
+    serializers: { req: serializeRequest, err: pino.stdSerializers.err },
+  });

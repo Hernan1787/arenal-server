@@ -3,6 +3,7 @@ import { withTransaction, type Db, type Tx } from '../db/tx.js';
 import { conflict, notFound } from '../errors.js';
 import { decodeCursor, toPage, type Page } from '../http/pagination.js';
 import type { MatchStore } from '../matches/match-store.js';
+import { noopBus, type EventBus } from '../realtime/bus.js';
 import { ensureAvailable, lockUser } from './availability.js';
 
 export type Visibility = 'public' | 'private';
@@ -53,7 +54,11 @@ const newInviteCode = (): string =>
   Array.from({ length: 8 }, () => CODE_ALPHABET.charAt(randomInt(CODE_ALPHABET.length))).join('');
 
 export class RoomsService {
-  constructor(private readonly deps: { db: Db; store: MatchStore }) {}
+  private readonly bus: EventBus;
+
+  constructor(private readonly deps: { db: Db; store: MatchStore; bus?: EventBus }) {
+    this.bus = deps.bus ?? noopBus;
+  }
 
   async create(userId: string, input: { visibility: Visibility; capacity: number }): Promise<Room> {
     const roomId = await withTransaction(this.deps.db, async (tx) => {
@@ -161,31 +166,38 @@ export class RoomsService {
    * se crea la partida y los miembros pasan a ella, todo en la misma transacción.
    */
   async setReady(roomId: string, userId: string, ready: boolean): Promise<Room> {
-    await withTransaction(this.deps.db, async (tx) => {
-      const room = await this.lockRoom(tx, roomId);
-      if (room === undefined) throw notFound('La sala');
-      const updated = await tx.query('UPDATE room_members SET ready = $3 WHERE room_id = $1 AND user_id = $2', [
-        roomId,
-        userId,
-        ready,
-      ]);
-      if (updated.rowCount !== 1) throw notFound('La sala');
-      if (room.status !== 'waiting') throw conflict('ROOM_NOT_OPEN', 'La sala ya no está esperando jugadores');
-
-      const members = await this.members(tx, roomId);
-      if (members.length >= 2 && members.every((m) => m.ready)) {
-        const { matchId } = await this.deps.store.create(
-          tx,
-          'room',
-          members.map((m) => m.userId),
-        );
-        await tx.query('DELETE FROM room_members WHERE room_id = $1', [roomId]);
-        await tx.query(`UPDATE rooms SET status = 'started', match_id = $2, updated_at = now() WHERE id = $1`, [
+    const started = await withTransaction(
+      this.deps.db,
+      async (tx): Promise<{ matchId: string; playerIds: string[] } | null> => {
+        const room = await this.lockRoom(tx, roomId);
+        if (room === undefined) throw notFound('La sala');
+        const updated = await tx.query('UPDATE room_members SET ready = $3 WHERE room_id = $1 AND user_id = $2', [
           roomId,
-          matchId,
+          userId,
+          ready,
         ]);
-      }
-    });
+        if (updated.rowCount !== 1) throw notFound('La sala');
+        if (room.status !== 'waiting') throw conflict('ROOM_NOT_OPEN', 'La sala ya no está esperando jugadores');
+
+        const members = await this.members(tx, roomId);
+        if (members.length >= 2 && members.every((m) => m.ready)) {
+          const { matchId } = await this.deps.store.create(
+            tx,
+            'room',
+            members.map((m) => m.userId),
+          );
+          await tx.query('DELETE FROM room_members WHERE room_id = $1', [roomId]);
+          await tx.query(`UPDATE rooms SET status = 'started', match_id = $2, updated_at = now() WHERE id = $1`, [
+            roomId,
+            matchId,
+          ]);
+          return { matchId, playerIds: members.map((m) => m.userId) };
+        }
+        return null;
+      },
+    );
+    // Ya confirmada la partida, se avisa a los jugadores conectados por WebSocket.
+    if (started !== null) await this.bus.matchAssigned(started.matchId, started.playerIds);
     return this.getAfterReady(roomId, userId);
   }
 

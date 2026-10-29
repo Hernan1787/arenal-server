@@ -39,6 +39,15 @@ export class MatchesService {
     return rowCount === 1;
   }
 
+  /** La partida en curso del usuario, si tiene una. */
+  async activeMatchOf(userId: string): Promise<string | null> {
+    const { rows } = await this.deps.db.query<{ match_id: string }>(
+      'SELECT match_id FROM match_players WHERE user_id = $1 AND active LIMIT 1',
+      [userId],
+    );
+    return rows[0]?.match_id ?? null;
+  }
+
   /** Estado visible para un participante. Sirve al conectarse; los cambios llegan por WebSocket. */
   async snapshot(matchId: string, userId: string): Promise<MatchSnapshot> {
     await this.requireParticipant(matchId, userId);
@@ -50,7 +59,9 @@ export class MatchesService {
   /** Repetición jugada por jugada, desde el punto de vista de quien la pide. Solo partidas terminadas. */
   async replay(matchId: string, userId: string): Promise<{ matchId: string; events: ReplayEntry[] }> {
     await this.requireParticipant(matchId, userId);
-    const { rows } = await this.deps.db.query<{ status: MatchStatus }>('SELECT status FROM matches WHERE id = $1', [matchId]);
+    const { rows } = await this.deps.db.query<{ status: MatchStatus }>('SELECT status FROM matches WHERE id = $1', [
+      matchId,
+    ]);
     if (rows[0]?.status === 'playing') {
       throw new AppError('conflict', 'La repetición está disponible cuando la partida termina', 'MATCH_IN_PROGRESS');
     }

@@ -7,15 +7,26 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { systemClock } from '../src/clock.js';
 import { loadConfig } from '../src/config.js';
-import { createServices } from '../src/services.js';
+import { createRedisClient } from '../src/infra/redis.js';
+import { createServices, silentLog } from '../src/services.js';
 
 // Construir las rutas no toca la base: el pool nunca llega a conectarse.
 let app: FastifyInstance;
 const pool = new pg.Pool({ max: 1 });
 
 beforeAll(async () => {
-  const services = await createServices(pool, loadConfig({ NODE_ENV: 'test' }), systemClock);
-  app = await buildApp({ version: '0.1.0', checks: {}, lifecycle: { draining: false }, api: services });
+  const config = loadConfig({ NODE_ENV: 'test' });
+  const services = await createServices({
+    db: pool,
+    redis: createRedisClient(config),
+    config,
+    clock: systemClock,
+    log: silentLog,
+  });
+  const { version } = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8')) as {
+    version: string;
+  };
+  app = await buildApp({ version, checks: {}, lifecycle: { draining: false }, api: services });
   await app.ready();
 });
 
@@ -32,7 +43,10 @@ describe('contrato OpenAPI', () => {
   });
 
   it('el archivo publicado está al día con las rutas', () => {
-    const published = readFileSync(join(import.meta.dirname, '..', '..', '..', 'packages', 'contracts', 'generated', 'openapi.json'), 'utf8');
+    const published = readFileSync(
+      join(import.meta.dirname, '..', '..', '..', 'packages', 'contracts', 'generated', 'openapi.json'),
+      'utf8',
+    );
     expect(JSON.parse(published)).toEqual(JSON.parse(JSON.stringify(app.swagger())));
   });
 
@@ -42,8 +56,12 @@ describe('contrato OpenAPI', () => {
     for (const [path, operations] of Object.entries(doc.paths)) {
       for (const [method, operation] of Object.entries(operations)) {
         const statuses = Object.keys(operation.responses);
-        expect(statuses.some((s) => s.startsWith('4')), `${method} ${path} documenta errores`).toBe(true);
-        if (!path.startsWith('/v1/auth/')) expect(operation.security, `${method} ${path} exige token`).toEqual([{ bearerAuth: [] }]);
+        expect(
+          statuses.some((s) => s.startsWith('4')),
+          `${method} ${path} documenta errores`,
+        ).toBe(true);
+        if (!path.startsWith('/v1/auth/'))
+          expect(operation.security, `${method} ${path} exige token`).toEqual([{ bearerAuth: [] }]);
       }
     }
   });

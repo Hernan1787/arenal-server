@@ -39,7 +39,12 @@ const pageOf = <T extends z.ZodType>(item: T) =>
 
 const Email = z.email().max(254);
 const Password = z.string().min(10, 'Mínimo 10 caracteres').max(128, 'Máximo 128 caracteres');
-const DisplayName = z.string().trim().min(2).max(32).regex(/^[\p{L}\p{N} _.-]+$/u, 'Solo letras, números, espacios y _ . -');
+const DisplayName = z
+  .string()
+  .trim()
+  .min(2)
+  .max(32)
+  .regex(/^[\p{L}\p{N} _.-]+$/u, 'Solo letras, números, espacios y _ . -');
 
 export const RegisterBody = z.object({ email: Email, password: Password, displayName: DisplayName }).strict();
 export const LoginBody = z.object({ email: Email, password: z.string().min(1).max(128) }).strict();
@@ -115,6 +120,17 @@ export const TicketStatus = named(
     z.object({ state: z.literal('matched'), matchId: Uuid }),
     z.object({ state: z.literal('expired') }),
   ]),
+);
+
+// --- Tiempo real ---------------------------------------------------------------------------
+
+export const RealtimeTicket = named(
+  'RealtimeTicket',
+  z.object({
+    ticket: z.string().describe('Se manda como ?ticket=… al abrir el WebSocket; sirve una sola vez'),
+    expiresIn: z.int().describe('Segundos de vida del ticket'),
+    path: z.string().describe('Ruta del WebSocket'),
+  }),
 );
 
 // --- Partidas ------------------------------------------------------------------------------

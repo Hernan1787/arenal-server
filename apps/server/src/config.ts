@@ -25,16 +25,44 @@ const EnvSchema = z.object({
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
   REDIS_TLS: z.stringbool().default(false),
+  /** Base lógica de Redis. Producción usa la 0; las pruebas usan otra para poder vaciarla. */
+  REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
 
   /** Llave privada ES256 en PEM (PKCS#8). Obligatoria en producción. */
   JWT_PRIVATE_KEY: z.string().min(1).optional(),
   JWT_ISSUER: z.string().min(1).default('arenal'),
   JWT_AUDIENCE: z.string().min(1).default('arenal-api'),
   ACCESS_TOKEN_TTL_S: z.coerce.number().int().min(60).max(3600).default(600),
-  REFRESH_TOKEN_TTL_S: z.coerce.number().int().min(3600).max(30 * 24 * 3600).default(7 * 24 * 3600),
+  REFRESH_TOKEN_TTL_S: z.coerce
+    .number()
+    .int()
+    .min(3600)
+    .max(30 * 24 * 3600)
+    .default(7 * 24 * 3600),
 
   TURN_TIMEOUT_MS: ms(600_000, 30_000),
   DISCONNECT_GRACE_MS: ms(600_000, 60_000),
+  SWEEP_INTERVAL_MS: z.coerce.number().int().min(100).max(60_000).default(1_000),
+
+  /** Orígenes permitidos para el navegador (CORS y WebSocket), separados por coma. */
+  ALLOWED_ORIGINS: z
+    .string()
+    .default('http://localhost:8080')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((o) => o.trim())
+        .filter((o) => o.length > 0),
+    ),
+  /** Límites por minuto. Se suben solo para la prueba de carga. */
+  RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(10),
+  RATE_LIMIT_TICKETS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(30),
+  WS_TICKET_TTL_S: z.coerce.number().int().min(5).max(300).default(30),
+  WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(100).max(120_000).default(15_000),
+  WS_HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().min(200).max(300_000).default(30_000),
+  WS_MAX_CONNECTIONS_PER_USER: z.coerce.number().int().min(1).max(20).default(3),
+  WS_MESSAGES_PER_SECOND: z.coerce.number().min(0.1).max(1000).default(10),
+  WS_MESSAGE_BURST: z.coerce.number().int().min(1).max(1000).default(20),
 
   MATCHMAKING_MATCH_SIZE: z.coerce.number().int().min(2).max(5).default(4),
   /** Después de esta espera, la cola arma partida con los que haya (mínimo 2). */
@@ -64,7 +92,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError('Configuración inválida:\n- JWT_PRIVATE_KEY: obligatoria en producción (viene de Key Vault)');
   }
   if (config.MATCHMAKING_FILL_AFTER_MS > config.MATCHMAKING_MAX_WAIT_MS) {
-    throw new ConfigError('Configuración inválida:\n- MATCHMAKING_FILL_AFTER_MS no puede pasar de MATCHMAKING_MAX_WAIT_MS');
+    throw new ConfigError(
+      'Configuración inválida:\n- MATCHMAKING_FILL_AFTER_MS no puede pasar de MATCHMAKING_MAX_WAIT_MS',
+    );
   }
   return config;
 }

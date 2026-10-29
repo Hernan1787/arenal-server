@@ -1,13 +1,16 @@
 import { randomUUID } from 'node:crypto';
+import type { AddressInfo } from 'node:net';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import pg from 'pg';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import type { Clock } from '../../src/clock.js';
-import { loadConfig } from '../../src/config.js';
-import { createServices, type Services } from '../../src/services.js';
+import { loadConfig, type Config } from '../../src/config.js';
+import { createRedisClient, type RedisClient } from '../../src/infra/redis.js';
+import type { RealtimeGateway } from '../../src/realtime/gateway.js';
+import { createRealtime, createServices, silentLog, type Services } from '../../src/services.js';
 
-/** Reloj que las pruebas mueven a mano (la cola de emparejamiento depende del tiempo). */
+/** Reloj que las pruebas mueven a mano (cola, temporizadores y periodo de gracia dependen del tiempo). */
 export class FakeClock implements Clock {
   private current = new Date('2026-11-01T12:00:00Z');
   now(): Date {
@@ -18,53 +21,148 @@ export class FakeClock implements Clock {
   }
 }
 
-export interface Harness {
+/** Una réplica del servidor: su app, sus servicios y, si se pidió, su WebSocket. */
+export interface Replica {
   readonly app: FastifyInstance;
-  readonly db: pg.Pool;
   readonly services: Services;
-  readonly clock: FakeClock;
+  readonly realtime: RealtimeGateway | null;
+  readonly baseUrl: string;
+  readonly draining: { value: boolean };
 }
 
-const TABLES = ['match_moves', 'match_events', 'match_players', 'room_members', 'rooms', 'matches', 'matchmaking_tickets', 'refresh_tokens', 'users'];
+export interface Harness extends Replica {
+  readonly db: pg.Pool;
+  readonly redis: RedisClient;
+  readonly clock: FakeClock;
+  readonly config: Config;
+  /** Levanta otra réplica sobre la misma base y el mismo Redis (para probar varias instancias). */
+  addReplica(): Promise<Replica>;
+}
+
+const TABLES = [
+  'match_moves',
+  'match_events',
+  'match_players',
+  'room_members',
+  'rooms',
+  'matches',
+  'matchmaking_tickets',
+  'refresh_tokens',
+  'users',
+];
+
+export interface HarnessOptions {
+  readonly env?: Record<string, string>;
+  /** Abre un puerto real y monta el WebSocket. */
+  readonly realtime?: boolean;
+}
 
 /**
- * Levanta la app completa contra la base de pruebas. Entre pruebas vacía las tablas, así
- * cada una arranca de cero.
+ * Levanta la app completa contra la base de pruebas y Redis (base 15). Entre pruebas vacía
+ * las tablas y Redis, así cada una arranca de cero.
  */
-export function useHarness(env: Record<string, string> = {}): Harness {
-  const harness = {} as { app: FastifyInstance; db: pg.Pool; services: Services; clock: FakeClock };
+export function useHarness(options: HarnessOptions = {}): Harness {
+  const h = {} as {
+    -readonly [K in keyof Harness]: Harness[K];
+  };
+  const replicas: { replica: Replica; close: () => Promise<void> }[] = [];
+  const clients: RedisClient[] = [];
+
+  const newRedis = async (): Promise<RedisClient> => {
+    const client = createRedisClient(h.config);
+    client.on('error', () => undefined);
+    await client.connect();
+    clients.push(client);
+    return client;
+  };
+
+  const startReplica = async (): Promise<Replica> => {
+    const redis = await newRedis();
+    const services = await createServices({ db: h.db, redis, config: h.config, clock: h.clock, log: silentLog });
+    const draining = { value: false };
+    const app = await buildApp({
+      version: 'test',
+      checks: {},
+      lifecycle: {
+        get draining() {
+          return draining.value;
+        },
+      },
+      api: services,
+      allowedOrigins: h.config.ALLOWED_ORIGINS,
+      rateLimits: {
+        authPerMinute: h.config.RATE_LIMIT_AUTH_PER_MINUTE,
+        ticketsPerMinute: h.config.RATE_LIMIT_TICKETS_PER_MINUTE,
+      },
+    });
+    let realtime: RealtimeGateway | null = null;
+    let baseUrl = '';
+    if (options.realtime === true) {
+      const subscriber = await newRedis();
+      realtime = createRealtime({
+        services,
+        subscriber,
+        config: h.config,
+        log: app.log,
+        isDraining: () => draining.value,
+      });
+      realtime.attach(app.server);
+      await app.listen({ host: '127.0.0.1', port: 0 });
+      baseUrl = `127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+    } else {
+      await app.ready();
+    }
+    const replica: Replica = { app, services, realtime, baseUrl, draining };
+    replicas.push({
+      replica,
+      close: async () => {
+        await realtime?.close(1012, 'Fin de la prueba');
+        await app.close();
+      },
+    });
+    return replica;
+  };
 
   beforeAll(async () => {
-    harness.db = new pg.Pool({
-      host: process.env['PG_HOST'] ?? '127.0.0.1',
-      port: Number(process.env['PG_PORT'] ?? 5432),
-      user: process.env['PG_USER'] ?? 'arenal',
-      database: process.env['TEST_PG_DATABASE'] ?? 'arenal_test',
-      max: 30,
-    });
-    harness.clock = new FakeClock();
-    const config = loadConfig({
+    h.config = loadConfig({
       NODE_ENV: 'test',
+      PG_HOST: process.env['PG_HOST'] ?? '127.0.0.1',
+      REDIS_HOST: process.env['REDIS_HOST'] ?? '127.0.0.1',
+      REDIS_DB: '15',
       MATCHMAKING_MATCH_SIZE: '4',
       MATCHMAKING_FILL_AFTER_MS: '10000',
       MATCHMAKING_MAX_WAIT_MS: '60000',
-      ...env,
+      ...options.env,
     });
-    harness.services = await createServices(harness.db, config, harness.clock);
-    harness.app = await buildApp({ version: 'test', checks: {}, lifecycle: { draining: false }, api: harness.services });
-    await harness.app.ready();
+    h.db = new pg.Pool({
+      host: h.config.PG_HOST,
+      port: h.config.PG_PORT,
+      user: h.config.PG_USER,
+      database: process.env['TEST_PG_DATABASE'] ?? 'arenal_test',
+      max: 30,
+    });
+    h.clock = new FakeClock();
+    h.redis = await newRedis();
+    await h.redis.flushDb();
+    const main = await startReplica();
+    Object.assign(h, main);
+    h.addReplica = startReplica;
   });
 
   afterEach(async () => {
-    await harness.db.query(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`);
+    // Cierra las réplicas extra que haya levantado la prueba.
+    while (replicas.length > 1) await replicas.pop()?.close();
+    await h.db.query(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`);
+    await h.redis.flushDb();
   });
 
   afterAll(async () => {
-    await harness.app.close();
-    await harness.db.end();
+    for (const r of replicas.reverse()) await r.close();
+    for (const c of clients) if (c.isOpen) c.destroy();
+    await h.db.end();
   });
 
-  return harness;
+  return h;
 }
 
 export interface TestUser {

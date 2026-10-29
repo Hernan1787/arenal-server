@@ -1,5 +1,5 @@
 import { PlayerEventSchema, PlayerViewSchema } from '@arenal/contracts';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import type { AuthService } from '../auth/auth-service.js';
@@ -7,6 +7,8 @@ import type { TokenIssuer } from '../auth/tokens.js';
 import type { MatchmakingService } from '../lobby/matchmaking-service.js';
 import type { RoomsService } from '../lobby/rooms-service.js';
 import type { MatchesService } from '../matches/matches-service.js';
+import { REALTIME_PATH } from '../realtime/gateway.js';
+import type { TicketStore } from '../realtime/tickets.js';
 import { currentUser, requireAuth } from './auth-guard.js';
 import * as S from './schemas.js';
 
@@ -16,14 +18,39 @@ export interface ApiServices {
   readonly rooms: RoomsService;
   readonly matchmaking: MatchmakingService;
   readonly matches: MatchesService;
+  readonly tickets: TicketStore;
 }
 
 const bearer = [{ bearerAuth: [] }];
 
+export interface RateLimits {
+  /** Registro, login y unión por código, por IP. */
+  readonly authPerMinute: number;
+  /** Tickets de WebSocket, por usuario. */
+  readonly ticketsPerMinute: number;
+}
+
+export const DEFAULT_RATE_LIMITS: RateLimits = { authPerMinute: 10, ticketsPerMinute: 30 };
+
 /** Rutas de la API v1. Todo lo que no es tiempo real pasa por aquí. */
-export function registerApiRoutes(root: FastifyInstance, services: ApiServices): void {
+export function registerApiRoutes(
+  root: FastifyInstance,
+  services: ApiServices,
+  limits: RateLimits = DEFAULT_RATE_LIMITS,
+): void {
   const app = root.withTypeProvider<ZodTypeProvider>();
   const auth = requireAuth(services.tokens, services.auth);
+  const perIp = (max: number) => ({ rateLimit: { max, timeWindow: '1 minute' } });
+  // En rutas autenticadas el límite va por usuario y se evalúa después de la guardia: muchos
+  // jugadores detrás de la misma IP (una red universitaria, la prueba de carga) no se bloquean entre sí.
+  const perUser = (max: number) => ({
+    rateLimit: {
+      max,
+      timeWindow: '1 minute',
+      hook: 'preHandler' as const,
+      keyGenerator: (request: FastifyRequest) => request.authUser?.id ?? request.ip,
+    },
+  });
 
   // --- Usuarios ----------------------------------------------------------------------------
 
@@ -34,7 +61,7 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
       body: S.RegisterBody,
       response: { 201: S.Session, ...S.errors(400, 409, 429) },
     },
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    config: perIp(limits.authPerMinute),
     handler: async (request, reply) => reply.code(201).send(await services.auth.register(request.body)),
   });
 
@@ -45,7 +72,7 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
       body: S.LoginBody,
       response: { 200: S.Session, ...S.errors(400, 401, 403, 429) },
     },
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    config: perIp(limits.authPerMinute),
     handler: (request) => services.auth.login(request.body),
   });
 
@@ -58,7 +85,7 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
       body: S.RefreshBody,
       response: { 200: S.Session, ...S.errors(400, 401, 429) },
     },
-    config: { rateLimit: { max: 30, timeWindow: '1 minute' } },
+    config: perIp(limits.authPerMinute * 3),
     handler: (request) => services.auth.refresh(request.body.refreshToken),
   });
 
@@ -76,7 +103,12 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
   });
 
   app.get('/v1/me', {
-    schema: { tags: ['Usuarios'], summary: 'Ver mi perfil', security: bearer, response: { 200: S.Profile, ...S.errors(401, 403) } },
+    schema: {
+      tags: ['Usuarios'],
+      summary: 'Ver mi perfil',
+      security: bearer,
+      response: { 200: S.Profile, ...S.errors(401, 403) },
+    },
     preHandler: auth,
     handler: (request) => services.auth.profile(currentUser(request).id),
   });
@@ -118,7 +150,8 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
       response: { 201: S.Room, ...S.errors(400, 401, 403, 409) },
     },
     preHandler: auth,
-    handler: async (request, reply) => reply.code(201).send(await services.rooms.create(currentUser(request).id, request.body)),
+    handler: async (request, reply) =>
+      reply.code(201).send(await services.rooms.create(currentUser(request).id, request.body)),
   });
 
   app.get('/v1/rooms', {
@@ -165,7 +198,7 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
       body: S.JoinByCodeBody,
       response: { 200: S.Room, ...S.errors(400, 401, 403, 404, 409, 429) },
     },
-    config: { rateLimit: { max: 10, timeWindow: '1 minute' } },
+    config: perUser(limits.authPerMinute),
     preHandler: auth,
     handler: (request) => services.rooms.joinByCode(request.body.inviteCode, currentUser(request).id),
   });
@@ -210,7 +243,8 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
       response: { 202: S.TicketStatus, ...S.errors(401, 403, 409) },
     },
     preHandler: auth,
-    handler: async (request, reply) => reply.code(202).send(await services.matchmaking.enqueue(currentUser(request).id)),
+    handler: async (request, reply) =>
+      reply.code(202).send(await services.matchmaking.enqueue(currentUser(request).id)),
   });
 
   app.get('/v1/matchmaking/ticket', {
@@ -235,6 +269,24 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
     handler: async (request, reply) => {
       await services.matchmaking.cancel(currentUser(request).id);
       return reply.code(204).send(null);
+    },
+  });
+
+  // --- Tiempo real --------------------------------------------------------------------------
+
+  app.post('/v1/realtime/tickets', {
+    schema: {
+      tags: ['Tiempo real'],
+      summary: 'Pedir un ticket para abrir el WebSocket',
+      description: `Ticket aleatorio de un solo uso y vida corta. Se usa una vez en ${REALTIME_PATH}?ticket=… para abrir la conexión; el protocolo está en el contrato AsyncAPI.`,
+      security: bearer,
+      response: { 201: S.RealtimeTicket, ...S.errors(401, 403, 429) },
+    },
+    config: perUser(limits.ticketsPerMinute),
+    preHandler: auth,
+    handler: async (request, reply) => {
+      const ticket = await services.tickets.issue(currentUser(request).id);
+      return reply.code(201).send({ ticket, expiresIn: services.tickets.ttlSeconds, path: REALTIME_PATH });
     },
   });
 
@@ -269,7 +321,10 @@ export function registerApiRoutes(root: FastifyInstance, services: ApiServices):
     preHandler: auth,
     handler: async (request) => {
       const replay = await services.matches.replay(request.params.id, currentUser(request).id);
-      return { matchId: replay.matchId, events: replay.events.map((e) => ({ seq: e.seq, event: PlayerEventSchema.parse(e.event) })) };
+      return {
+        matchId: replay.matchId,
+        events: replay.events.map((e) => ({ seq: e.seq, event: PlayerEventSchema.parse(e.event) })),
+      };
     },
   });
 }

@@ -31,8 +31,13 @@ jobs:
           --health-interval 3s
           --health-timeout 3s
           --health-retries 20
+      redis:
+        image: redis:7.4-alpine
+        ports:
+          - 6379:6379
     env:
       PG_HOST: 127.0.0.1
+      REDIS_HOST: 127.0.0.1
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -41,11 +46,13 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Formato (Prettier)
+        run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck
       - name: Pruebas unitarias
         run: pnpm test
-      - name: Pruebas de integración (Postgres)
+      - name: Pruebas de integración (Postgres, Redis y WebSocket)
         run: pnpm test:integration
       - name: Contratos sincronizados con el código
         run: pnpm contracts:check

@@ -14,7 +14,10 @@ export function createRedisClient(config: Config): RedisClient {
     connectTimeout: 2_000,
     reconnectStrategy: (retries: number) => Math.min(100 * 2 ** retries, 5_000),
   };
-  return createClient({ socket: config.REDIS_TLS ? { ...socket, tls: true } : { ...socket, tls: false } });
+  return createClient({
+    socket: config.REDIS_TLS ? { ...socket, tls: true } : { ...socket, tls: false },
+    database: config.REDIS_DB,
+  });
 }
 
 export async function checkRedis(client: RedisClient): Promise<void> {
