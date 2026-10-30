@@ -61,6 +61,26 @@ jobs:
           npx --yes @asyncapi/cli@6.2.2 config analytics --disable || true
           npx --yes @asyncapi/cli@6.2.2 validate packages/contracts/generated/asyncapi.yaml
 
+  infra:
+    name: Infraestructura (Bicep, scripts y workflows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Bicep compila sin advertencias
+        run: |
+          az bicep install
+          az bicep build --file infra/main.bicep --stdout > /dev/null 2> bicep.log || { cat bicep.log; exit 1; }
+          # Diagnósticos de Bicep: "archivo(línea,col) : Warning regla: …"
+          if grep -E '\) : (Warning|Error) ' bicep.log; then exit 1; fi
+      - name: Parámetros de dev y prod
+        env:
+          DEPLOYER_PRINCIPAL_ID: 00000000-0000-0000-0000-000000000000
+          ALERT_EMAIL: ci@ejemplo.com
+        run: |
+          for env in dev prod; do az bicep build-params --file "infra/$env.bicepparam" --stdout > /dev/null; done
+      - name: Scripts de despliegue (shellcheck)
+        run: shellcheck -x infra/scripts/*.sh
+
   secrets:
     name: Búsqueda de secretos (gitleaks)
     runs-on: ubuntu-latest
@@ -115,7 +135,7 @@ jobs:
           JWT_PRIVATE_KEY="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256)"
           export JWT_PRIVATE_KEY
           docker run -d --name smoke --network host -e PG_HOST=127.0.0.1 -e REDIS_HOST=127.0.0.1 -e JWT_PRIVATE_KEY arenal-server:ci
-          for i in $(seq 1 30); do curl -fsS localhost:8080/health/ready && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS localhost:8080/health/ready && break; sleep 1; done
           curl -fsS localhost:8080/health/ready || { docker logs smoke; exit 1; }
       - name: Prueba de humo de la API (registro con Argon2 nativo dentro del contenedor)
         run: |

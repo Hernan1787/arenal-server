@@ -1,0 +1,44 @@
+name: Rollback
+
+# Devuelve el tráfico a la revisión anterior (sigue activa desde el último despliegue). Tarda
+# menos de un minuto; el procedimiento manual está en docs/deploy.md.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente
+        type: choice
+        options: [prod, dev]
+        default: prod
+      revision:
+        description: 'Revisión destino (vacío: la marcada como anterior)'
+        required: false
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Rollback de ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Tráfico a la revisión anterior y prueba de humo
+        env:
+          ENV_NAME: ${{ inputs.environment }}
+          TARGET: ${{ inputs.revision }}
+        run: infra/scripts/rollback.sh "$ENV_NAME" "$TARGET"

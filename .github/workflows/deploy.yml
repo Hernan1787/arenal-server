@@ -1,0 +1,91 @@
+name: Despliegue
+
+# Corre cuando el CI de main pasa: despliega a dev sin intervención y después espera la
+# aprobación manual del environment `prod`. Un ambiente que no existe se crea completo en la
+# misma ejecución (infra/scripts/deploy.sh). GitHub entra a Azure con OIDC: no hay secretos
+# de Azure guardados en ningún lado.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Commit o rama a desplegar (por defecto, main)'
+        required: false
+        default: main
+
+permissions:
+  contents: read
+  id-token: write
+
+# Nunca dos despliegues a la vez; uno nuevo espera a que termine el anterior.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
+  DEPLOYER_PRINCIPAL_ID: ${{ vars.DEPLOYER_PRINCIPAL_ID }}
+  ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
+
+jobs:
+  dev:
+    name: Dev
+    # Sin la preparación de Azure (infra/scripts/bootstrap.sh) no hay a dónde desplegar: se salta.
+    if: >-
+      vars.AZURE_CLIENT_ID != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    environment:
+      name: dev
+      url: ${{ steps.deploy.outputs.url }}
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || inputs.ref }}
+      - id: sha
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: deploy
+        name: Infraestructura, imagen, revisión nueva, prueba de humo y tráfico
+        env:
+          GITHUB_SHA: ${{ steps.sha.outputs.sha }}
+        run: infra/scripts/deploy.sh dev
+
+  prod:
+    name: Producción
+    needs: dev
+    runs-on: ubuntu-latest
+    # Las reglas del environment piden la aprobación de un revisor antes de empezar.
+    environment:
+      name: prod
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.dev.outputs.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - id: deploy
+        name: Misma imagen que dev, revisión nueva, prueba de humo y tráfico
+        env:
+          GITHUB_SHA: ${{ needs.dev.outputs.sha }}
+        run: infra/scripts/deploy.sh prod
