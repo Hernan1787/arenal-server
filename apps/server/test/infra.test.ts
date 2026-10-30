@@ -60,3 +60,19 @@ describe('configuración de Azure', () => {
     expect(() => loadConfig({ REPLICA_ID: 'a b|c' })).toThrow(ConfigError);
   });
 });
+
+describe('telemetría', () => {
+  it('sin cadena de conexión de Application Insights no arranca nada', async () => {
+    const { startTelemetry, flushTelemetry } = await import('../src/observability/telemetry.js');
+    expect(await startTelemetry({})).toBe(false);
+    expect(await startTelemetry({ APPLICATIONINSIGHTS_CONNECTION_STRING: '' })).toBe(false);
+    await expect(flushTelemetry()).resolves.toBeUndefined();
+  });
+
+  it('no traza las sondas de salud ni guarda argumentos de Redis', async () => {
+    const { ignoreIncomingRequest, redisStatement } = await import('../src/observability/telemetry.js');
+    expect(ignoreIncomingRequest({ url: '/health/ready' })).toBe(true);
+    expect(ignoreIncomingRequest({ url: '/v1/rooms' })).toBe(false);
+    expect(redisStatement('GETDEL')).toBe('GETDEL');
+  });
+});

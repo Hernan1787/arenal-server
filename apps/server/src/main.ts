@@ -2,6 +2,8 @@ import { buildApp, createLogger, type Lifecycle } from './app.js';
 import { systemClock } from './clock.js';
 import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
+import { observeGauges } from './observability/metrics.js';
+import { flushTelemetry } from './observability/telemetry.js';
 import { checkPostgres, createPostgresPool, ensureDatabase } from './infra/postgres.js';
 import { checkRedis, createRedisClient } from './infra/redis.js';
 import { createRealtime, createServices } from './services.js';
@@ -84,6 +86,15 @@ async function main(): Promise<void> {
     isDraining: () => lifecycle.draining,
   });
   realtime.attach(server.server);
+  observeGauges({
+    connections: () => realtime.connectionCount,
+    activeMatches: async () => {
+      const { rows } = await pool.query<{ n: number }>(
+        "SELECT count(*)::int AS n FROM matches WHERE status = 'playing'",
+      );
+      return rows[0]?.n ?? 0;
+    },
+  });
 
   // Cada réplica corre la cola y el reloj del servidor; candados de Postgres y el propio
   // dominio evitan que una misma acción se aplique dos veces.
@@ -125,6 +136,7 @@ async function main(): Promise<void> {
       };
       await Promise.allSettled([pool.end(), closeRedis(redis), closeRedis(subscriber)]);
       server.log.info('apagado limpio');
+      await flushTelemetry().catch(() => undefined);
       // Sin process.exit: el proceso termina solo al quedar sin conexiones, y los logs alcanzan a salir.
       process.exitCode = 0;
     })();

@@ -24,6 +24,7 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                               |
 | Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado                 |
 | Infraestructura en Azure (Bicep) y despliegue  | Bicep completo, identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback; falta la suscripción |
+| Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                  |
 | Prueba de carga                                | Pendiente                                                                                                                   |
 
 URL pública en Azure: pendiente (falta activar la suscripción; los pasos están en [docs/deploy.md](docs/deploy.md)).
@@ -92,6 +93,7 @@ apps/server
   src/matches        persistencia de partidas: orden, idempotencia, historial y repetición
   src/realtime       WebSocket, tickets, presencia, reparto entre réplicas y reloj del servidor
   src/admin          funciones del administrador y auditoría
+  src/observability  OpenTelemetry: arranque, trazas y métricas propias
   src/cli            línea de comandos de operación (dar o quitar el rol de administrador)
   src/http           rutas, esquemas de la API, guardia de autenticación, Problem Details
   src/db             migraciones y transacciones
@@ -133,4 +135,5 @@ En [docs/adr](docs/adr):
 ## Azure
 
 La guía completa está en [docs/deploy.md](docs/deploy.md): arquitectura, quién accede a qué, la preparación única,
-qué hace cada despliegue, el rollback, cómo reconstruir un ambiente y el costo mensual estimado.
+qué hace cada despliegue, el rollback, cómo reconstruir un ambiente y el costo mensual estimado. Qué se mide y cómo se
+consulta está en [docs/observability.md](docs/observability.md).
