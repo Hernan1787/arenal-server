@@ -72,6 +72,7 @@ const EnvSchema = z.object({
   RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(10),
   RATE_LIMIT_TICKETS_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(30),
   RATE_LIMIT_ADMIN_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(120),
+  RATE_LIMIT_USER_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(300),
   WS_TICKET_TTL_S: z.coerce.number().int().min(5).max(300).default(30),
   WS_HEARTBEAT_INTERVAL_MS: z.coerce.number().int().min(100).max(120_000).default(15_000),
   WS_HEARTBEAT_TIMEOUT_MS: z.coerce.number().int().min(200).max(300_000).default(30_000),
@@ -84,6 +85,9 @@ const EnvSchema = z.object({
   MATCHMAKING_FILL_AFTER_MS: ms(600_000, 10_000),
   /** Tiempo máximo de espera: si no se arma partida antes, el ticket vence. */
   MATCHMAKING_MAX_WAIT_MS: ms(3_600_000, 60_000),
+
+  /** Partidas en curso que cada réplica guarda en memoria (0 desactiva la caché). */
+  STATE_CACHE_SIZE: z.coerce.number().int().min(0).max(100_000).default(2_000),
 
   /** Tiempo máximo para drenar conexiones al recibir SIGTERM. */
   SHUTDOWN_GRACE_MS: ms(600_000, 25_000),

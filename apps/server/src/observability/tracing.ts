@@ -17,6 +17,7 @@ export const attr = {
   outcome: 'arenal.outcome',
   code: 'arenal.code',
   seq: 'arenal.seq',
+  stateSource: 'arenal.state_source',
 } as const;
 
 /**

@@ -52,8 +52,10 @@ async function main(): Promise<void> {
       authPerMinute: config.RATE_LIMIT_AUTH_PER_MINUTE,
       ticketsPerMinute: config.RATE_LIMIT_TICKETS_PER_MINUTE,
       adminPerMinute: config.RATE_LIMIT_ADMIN_PER_MINUTE,
+      userPerMinute: config.RATE_LIMIT_USER_PER_MINUTE,
     },
     api: services,
+    rateLimitStore: services.rateLimitStore,
     checks: {
       postgres: () => checkPostgres(pool),
       redis: () => checkRedis(redis),

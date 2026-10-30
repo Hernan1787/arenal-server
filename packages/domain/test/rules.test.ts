@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createMatch, decide, DEFAULT_CONFIG, replay, type DomainEvent } from '../src/index.js';
+import {
+  buildShuffledDeck,
+  createMatch,
+  decide,
+  DEFAULT_CONFIG,
+  DomainInvariantError,
+  replay,
+  type DomainEvent,
+} from '../src/index.js';
 import { act, cool, deepFreeze, errorCode, minRng, player, seededRng, seismo, setupMatch, stone } from './support.js';
 
 const types = (events: readonly DomainEvent[]): string[] => events.map((e) => e.type);
@@ -46,6 +54,10 @@ describe('inicio de partida', () => {
 
     const started = act(createMatch('m', ['ana', 'beto']), { type: 'start' }, seededRng(3)).state;
     expect(errorCode(started, { type: 'start' })).toBe('ALREADY_STARTED');
+  });
+
+  it('con un generador de azar roto falla en vez de colgarse', () => {
+    expect(() => buildShuffledDeck(DEFAULT_CONFIG, minRng)).toThrow(DomainInvariantError);
   });
 
   it('rechaza una configuración inválida', () => {

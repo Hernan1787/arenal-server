@@ -20,7 +20,10 @@
     "contracts:generate": "pnpm --filter @arenal/contracts generate && pnpm --filter @arenal/server openapi",
     "contracts:check": "pnpm contracts:generate && git diff --exit-code -- packages/contracts/generated",
     "dev": "pnpm --filter @arenal/server dev",
-    "prepare": "node scripts/setup-hooks.mjs"
+    "prepare": "node scripts/setup-hooks.mjs",
+    "bot": "pnpm --filter @arenal/bot bot",
+    "play": "pnpm --filter @arenal/bot play",
+    "load": "pnpm --filter @arenal/bot load"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

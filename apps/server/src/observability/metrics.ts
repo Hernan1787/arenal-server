@@ -14,6 +14,8 @@ export interface GameMetrics {
   eventDelivered(lagMs: number): void;
   /** Mensaje de WebSocket rechazado antes de llegar al dominio (validación o límite de tasa). */
   messageRejected(code: string): void;
+  /** De dónde salió el estado de una partida: de la caché de la réplica o de Postgres. */
+  stateLoaded(source: 'cache' | 'database'): void;
 }
 
 /** Límites de los histogramas en ms: la meta del proyecto es p95 < 200 ms. */
@@ -39,7 +41,15 @@ export function createGameMetrics(meter: Meter = metrics.getMeter('arenal-server
     unit: '{message}',
   });
 
+  const stateLoads = meter.createCounter('arenal.state.loads', {
+    description: 'Lecturas del estado de una partida, por origen (caché de la réplica o Postgres)',
+    unit: '{load}',
+  });
+
   return {
+    stateLoaded(source) {
+      stateLoads.add(1, { 'arenal.state_source': source });
+    },
     intentProcessed(intent, outcome, durationMs, code) {
       const attributes = { 'arenal.intent': intent, 'arenal.outcome': outcome, ...(code && { 'arenal.code': code }) };
       intents.add(1, attributes);

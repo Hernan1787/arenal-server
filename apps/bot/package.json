@@ -1,0 +1,18 @@
+{
+  "name": "@arenal/bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bot, cliente de prueba en la terminal y prueba de carga de Arenal.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "bot": "tsx --conditions=development src/bot.ts",
+    "play": "tsx --conditions=development src/play.ts",
+    "load": "tsx --conditions=development src/load.ts"
+  },
+  "dependencies": {
+    "@arenal/client": "workspace:*",
+    "@arenal/domain": "workspace:*"
+  }
+}

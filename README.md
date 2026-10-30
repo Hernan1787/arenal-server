@@ -25,7 +25,8 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado                 |
 | Infraestructura en Azure (Bicep) y despliegue  | Bicep completo, identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback; falta la suscripción |
 | Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                  |
-| Prueba de carga                                | Pendiente                                                                                                                   |
+| Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`)                                       |
+| Prueba de carga                                | Partidas reales por WebSocket con latencia de punta a punta y punto de quiebre ([docs/load-test.md](docs/load-test.md))     |
 
 URL pública en Azure: pendiente (falta activar la suscripción; los pasos están en [docs/deploy.md](docs/deploy.md)).
 
@@ -65,6 +66,20 @@ pnpm dev               # servidor con recarga en http://localhost:8080
 `pnpm install` activa un hook de pre-commit que corre [gitleaks](https://github.com/gitleaks/gitleaks) si está
 instalado. El CI lo corre siempre.
 
+## Jugar: bot y cliente de prueba
+
+Con el servidor corriendo (`docker compose up` o `pnpm dev`):
+
+```bash
+pnpm bot --bots 4 --games 3            # 4 bots juegan 3 partidas por la cola rápida
+pnpm play --name Hernán                 # cliente en la terminal; en otra terminal: pnpm bot --bots 3
+pnpm load --matches 50 --duration 60    # prueba de carga (ver docs/load-test.md)
+```
+
+Los tres aceptan `--url` (por defecto `http://localhost:8080`). Usan el paquete `packages/client`, que valida cada
+mensaje del servidor contra el contrato y mantiene la vista de la partida aplicando los eventos con
+`applyPlayerEvent` del dominio.
+
 ## Administración
 
 Las rutas `/v1/admin/*` son solo para el rol administrador (ver `/docs`). Nadie puede darse ese rol por la API:
@@ -87,6 +102,8 @@ la misma transacción; la tabla rechaza cambios y borrados. Detalle en el
 ```
 packages/domain      motor de reglas puro: decide, evolve, viewFor, projectEvent
 packages/contracts   esquemas Zod del protocolo; genera generated/asyncapi.yaml y guarda openapi.json
+packages/client      cliente REST y WebSocket (lo usan el bot, el cliente de prueba y la prueba de carga)
+apps/bot             bot, cliente en la terminal y prueba de carga
 apps/server
   src/auth           contraseñas (Argon2id), JWT y refresh tokens
   src/lobby          salas y cola de emparejamiento
@@ -117,6 +134,11 @@ de ESLint y una prueba de arquitectura rompen el build si alguien lo intenta. El
   [`packages/contracts/generated/asyncapi.yaml`](packages/contracts/generated/asyncapi.yaml), generado desde los
   esquemas Zod. No se edita a mano.
 - **Errores HTTP:** Problem Details (RFC 9457). Catálogo en [docs/problems.md](docs/problems.md).
+
+## Seguridad
+
+El modelo de amenazas (STRIDE, con cada control, dónde está y qué prueba lo cubre, y los riesgos aceptados) está en
+[docs/threat-model.md](docs/threat-model.md).
 
 ## Decisiones de arquitectura
 

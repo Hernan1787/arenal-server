@@ -31,4 +31,5 @@ export {
   type RuleErrorCode,
   type StoneValue,
 } from './types.js';
+export { applyPlayerEvent } from './view-update.js';
 export { viewFor, type OwnInfo, type PlayerView, type PublicPlayer, type PublicRules } from './view.js';

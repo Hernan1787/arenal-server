@@ -163,6 +163,24 @@ describe('durabilidad y fin de partida', () => {
     expect((await fresh.load(matchId))?.state).toEqual((await h.services.store.load(matchId))?.state);
   });
 
+  it('dos réplicas con caché que se turnan las jugadas nunca usan un estado viejo', async () => {
+    const { matchId } = await startMatch();
+    const options = { db: h.db, clock: h.clock, rng: cryptoRng, turnTimeoutMs: 30_000, stateCacheSize: 100 };
+    const replicas = [new MatchStore(options), new MatchStore(options)];
+    for (let i = 0; i < 12; i++) {
+      // Cada réplica alterna: la caché de la otra queda una o más versiones atrás.
+      const store = replicas[i % 2 === 0 || i > 8 ? 0 : 1] ?? h.services.store;
+      const loaded = await store.load(matchId);
+      const playerId = loaded?.state.currentPlayer ?? '';
+      const cardId = loaded?.state.players.find((p) => p.id === playerId)?.hand[0]?.id ?? '';
+      const result = await store.apply(matchId, { type: 'play_card', playerId, cardId });
+      expect(result.kind).toBe('applied');
+    }
+    // Lo que cada réplica tiene en memoria coincide con reconstruir todo desde Postgres.
+    const fromDb = await new MatchStore({ ...options, stateCacheSize: 0 }).load(matchId);
+    for (const store of replicas) expect((await store.load(matchId))?.state).toEqual(fromDb?.state);
+  });
+
   it('una partida jugada hasta el final: resultado guardado, jugadores liberados, historial y repetición', async () => {
     const { matchId, players } = await startMatch();
     let guard = 0;

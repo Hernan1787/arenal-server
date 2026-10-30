@@ -16,13 +16,13 @@ workspace, así que todo se consulta con KQL en un solo lugar.
 
 ## Trazas
 
-| Span                                          | Tipo        | Atributos                                                                                             |
-| --------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------- |
-| `POST /v1/...` etc.                           | Servidor    | Automáticos de HTTP. Las sondas `/health/*` no se trazan                                              |
-| `ws play_card`, `ws leave_match`, `ws resume` | Servidor    | `arenal.match.id`, `arenal.player.id`, `arenal.message.id`                                            |
-| `match.apply`                                 | Interno     | `arenal.match.id`, `arenal.player.id`, `arenal.intent`, `arenal.outcome`, `arenal.seq`, `arenal.code` |
-| `pg.query:*`                                  | Dependencia | Consulta parametrizada, sin valores                                                                   |
-| `redis-*`                                     | Dependencia | Solo el nombre del comando, nunca sus argumentos                                                      |
+| Span                                          | Tipo        | Atributos                                                                                                                    |
+| --------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `POST /v1/...` etc.                           | Servidor    | Automáticos de HTTP. Las sondas `/health/*` no se trazan                                                                     |
+| `ws play_card`, `ws leave_match`, `ws resume` | Servidor    | `arenal.match.id`, `arenal.player.id`, `arenal.message.id`                                                                   |
+| `match.apply`                                 | Interno     | `arenal.match.id`, `arenal.player.id`, `arenal.intent`, `arenal.outcome`, `arenal.seq`, `arenal.code`, `arenal.state_source` |
+| `pg.query:*`                                  | Dependencia | Consulta parametrizada, sin valores                                                                                          |
+| `redis-*`                                     | Dependencia | Solo el nombre del comando, nunca sus argumentos                                                                             |
 
 `match.apply` envuelve toda intención, venga de un jugador, del temporizador, del periodo de gracia o de un
 administrador. Las consultas que hace quedan como hijas, y cuando viene de un mensaje del WebSocket, cuelga de
@@ -35,6 +35,7 @@ administrador. Las consultas que hace quedan como hijas, y cuando viene de un me
 | `arenal.intents`            | Contador        | Jugadas por segundo, rechazos por código (`arenal.intent`, `arenal.outcome`, `arenal.code`)            |
 | `arenal.intent.duration`    | Histograma (ms) | Latencia por jugada en el servidor: bloqueo, validación, guardado y aviso a las réplicas               |
 | `arenal.event.delivery_lag` | Histograma (ms) | Desde que se publica un evento hasta que sale por el WebSocket de cada jugador, también entre réplicas |
+| `arenal.state.loads`        | Contador        | De dónde salió el estado de cada partida: caché de la réplica o Postgres (`arenal.state_source`)       |
 | `arenal.ws.rejected`        | Contador        | Mensajes rechazados antes del dominio: JSON roto, esquema inválido, límite de tasa                     |
 | `arenal.ws.connections`     | Indicador       | Conexiones abiertas en cada réplica                                                                    |
 | `arenal.matches.active`     | Indicador       | Partidas en curso. Todas las réplicas reportan el mismo número: se usa el máximo                       |

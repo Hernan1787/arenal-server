@@ -1,10 +1,11 @@
 import type { ArenalConfig } from './config.js';
 import { shuffle, type Rng } from './rng.js';
-import type { Card, CardId, StoneValue } from './types.js';
+import { DomainInvariantError, type Card, type CardId, type StoneValue } from './types.js';
 
 const ID_ALPHABET_SIZE = 36;
 const ID_LENGTH = 6;
 const MAX_ID = ID_ALPHABET_SIZE ** ID_LENGTH - 1;
+const MAX_ID_ATTEMPTS = 100;
 
 function randomCardId(rng: Rng): CardId {
   return `c_${rng.int(0, MAX_ID).toString(ID_ALPHABET_SIZE).padStart(ID_LENGTH, '0')}`;
@@ -14,13 +15,16 @@ function randomCardId(rng: Rng): CardId {
 export function buildShuffledDeck(config: ArenalConfig, rng: Rng): Card[] {
   const used = new Set<CardId>();
   const nextId = (): CardId => {
-    for (;;) {
+    // Con un generador sano un choque es rarísimo (44 IDs entre 2 mil millones); si se repite
+    // tanto, el generador está roto y es mejor fallar que quedarse en un ciclo infinito.
+    for (let attempt = 0; attempt < MAX_ID_ATTEMPTS; attempt++) {
       const id = randomCardId(rng);
       if (!used.has(id)) {
         used.add(id);
         return id;
       }
     }
+    throw new DomainInvariantError('El generador de azar repite los IDs de carta');
   };
 
   const cards: Card[] = [];

@@ -1,3 +1,4 @@
+import type { FastifyRateLimitStoreCtor } from '@fastify/rate-limit';
 import type { FastifyBaseLogger } from 'fastify';
 import type pg from 'pg';
 import { AdminService } from './admin/admin-service.js';
@@ -5,6 +6,7 @@ import { AuthService } from './auth/auth-service.js';
 import { createTokenIssuer } from './auth/tokens.js';
 import type { Clock } from './clock.js';
 import type { Config } from './config.js';
+import { createRedisRateLimitStore } from './http/rate-limit-store.js';
 import type { ApiServices } from './http/routes.js';
 import type { RedisClient } from './infra/redis.js';
 import { MatchmakingService } from './lobby/matchmaking-service.js';
@@ -25,6 +27,8 @@ export interface Services extends ApiServices {
   readonly presence: Presence;
   readonly sweeper: Sweeper;
   readonly metrics: GameMetrics;
+  /** Contadores de límite de tasa en Redis, compartidos por las réplicas. */
+  readonly rateLimitStore: FastifyRateLimitStoreCtor;
   readonly ephemeralJwtKey: boolean;
 }
 
@@ -44,7 +48,15 @@ export async function createServices(deps: {
   const bus = new RedisEventBus(redis, log);
   // Se crean aquí y no al importar el módulo: así ya está registrado el SDK de OpenTelemetry.
   const metrics = createGameMetrics();
-  const store = new MatchStore({ db, clock, rng: cryptoRng, turnTimeoutMs: config.TURN_TIMEOUT_MS, bus, metrics });
+  const store = new MatchStore({
+    db,
+    clock,
+    rng: cryptoRng,
+    turnTimeoutMs: config.TURN_TIMEOUT_MS,
+    bus,
+    metrics,
+    stateCacheSize: config.STATE_CACHE_SIZE,
+  });
   // El arriendo de presencia cubre dos heartbeats: si no llega un pong en ese tiempo, la conexión se da por muerta.
   const presence = new Presence({
     redis,
@@ -60,6 +72,7 @@ export async function createServices(deps: {
     bus,
     presence,
     metrics,
+    rateLimitStore: createRedisRateLimitStore(redis),
     ephemeralJwtKey: tokens.ephemeralKey,
     tickets: new TicketStore(redis, config.WS_TICKET_TTL_S),
     auth: new AuthService({ db, tokens, clock, refreshTtlSeconds: config.REFRESH_TOKEN_TTL_S }),
