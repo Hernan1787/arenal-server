@@ -10,6 +10,9 @@ WORKDIR /repo
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY packages/domain/package.json packages/domain/
 COPY packages/contracts/package.json packages/contracts/
+# El cliente es dependencia de desarrollo del servidor (sus pruebas lo usan): pnpm necesita verlo
+# en el workspace para empaquetar, pero no entra a la imagen final.
+COPY packages/client/package.json packages/client/
 COPY apps/server/package.json apps/server/
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
