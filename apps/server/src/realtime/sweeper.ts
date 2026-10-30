@@ -25,7 +25,7 @@ export class Sweeper {
       presence: Presence;
       clock: Clock;
       graceMs: number;
-      log: Pick<FastifyBaseLogger, 'error'>;
+      log: Pick<FastifyBaseLogger, 'error' | 'info'>;
     },
   ) {}
 
@@ -53,7 +53,10 @@ export class Sweeper {
           playerId: row.current_player,
           turn: row.turn,
         });
-        if (result.kind === 'applied') applied += 1;
+        if (result.kind === 'applied') {
+          applied += 1;
+          this.deps.log.info({ matchId: row.id, userId: row.current_player, seq: result.seq }, 'turno vencido');
+        }
       } catch (err) {
         this.deps.log.error({ err, matchId: row.id }, 'falló el temporizador de turno');
       }
@@ -74,7 +77,13 @@ export class Sweeper {
     for (const row of rows) {
       try {
         const result = await this.deps.store.apply(row.match_id, { type: 'abandon', playerId: row.user_id });
-        if (result.kind === 'applied') applied += 1;
+        if (result.kind === 'applied') {
+          applied += 1;
+          this.deps.log.info(
+            { matchId: row.match_id, userId: row.user_id, seq: result.seq },
+            'abandono por desconexión',
+          );
+        }
       } catch (err) {
         this.deps.log.error({ err, matchId: row.match_id }, 'falló la regla de abandono');
       }

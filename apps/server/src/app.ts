@@ -14,6 +14,7 @@ import {
   validatorCompiler,
 } from 'fastify-type-provider-zod';
 import { pino } from 'pino';
+import { traceFields } from './observability/tracing.js';
 import { AppError } from './errors.js';
 import { REDACT_PATHS, serializeRequest } from './http/logging.js';
 import { buildProblem, sendProblem } from './http/problem.js';
@@ -224,4 +225,7 @@ export const createLogger = (level: string): FastifyBaseLogger =>
     level,
     redact: { paths: REDACT_PATHS, censor: '[oculto]' },
     serializers: { req: serializeRequest, err: pino.stdSerializers.err },
+    // Cada línea lleva la traza activa: en Log Analytics se cruza con Application Insights
+    // (trace_id = operation_Id) y se llega a la solicitud o la jugada que la produjo.
+    mixin: traceFields,
   });

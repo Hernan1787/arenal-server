@@ -140,13 +140,14 @@ la [calculadora de Azure](https://azure.microsoft.com/pricing/calculator/) y en 
 
 ## Alertas
 
-| Alerta                            | Condición                                 | Severidad |
-| --------------------------------- | ----------------------------------------- | --------- |
-| `alert-ca-arenal-<amb>-5xx`       | Más de 10 respuestas 5xx en 5 minutos     | 1         |
-| `alert-ca-arenal-<amb>-reinicios` | Alguna réplica se reinició en 15 minutos  | 2         |
-| `alert-arenal-<amb>-postgres-cpu` | CPU de Postgres sobre 80 % durante 10 min | 2         |
+| Alerta                                | Condición                                                                                            | Severidad |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------- | --------- |
+| `alert-ca-arenal-<amb>-5xx`           | Más de 10 respuestas 5xx en 5 minutos                                                                | 1         |
+| `alert-ca-arenal-<amb>-reinicios`     | Alguna réplica se reinició en 15 minutos                                                             | 2         |
+| `alert-arenal-<amb>-postgres-cpu`     | CPU de Postgres sobre 80 % durante 10 min                                                            | 2         |
+| `alert-arenal-<amb>-latencia-jugadas` | Jugadas con más de 100 ms promedio en el servidor durante 5 min ([observabilidad](observability.md)) | 2         |
 
-Las tres avisan por correo al grupo de acciones `ag-arenal-<amb>`.
+Todas avisan por correo al grupo de acciones `ag-arenal-<amb>`.
 
 ## Problemas conocidos
 

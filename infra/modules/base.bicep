@@ -307,6 +307,36 @@ resource postgresCpuAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
+// Métrica propia del servidor (OpenTelemetry → Application Insights): tiempo de aplicar una
+// jugada, desde que se bloquea la partida hasta que se avisa a las réplicas.
+resource latencyAlert 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
+  name: 'alert-${name}-latencia-jugadas'
+  location: location
+  tags: tags
+  properties: {
+    displayName: 'Arenal ${environmentName}: jugadas lentas'
+    description: 'El tiempo promedio de aplicar una jugada pasa de 100 ms durante 5 minutos (la meta de p95 es 200 ms)'
+    severity: 2
+    enabled: true
+    scopes: [appInsights.id]
+    evaluationFrequency: 'PT5M'
+    windowSize: 'PT5M'
+    criteria: {
+      allOf: [
+        {
+          query: 'customMetrics | where name == "arenal.intent.duration" and tostring(customDimensions["arenal.intent"]) == "play_card" | summarize promedio = sum(valueSum) / sum(valueCount)'
+          timeAggregation: 'Average'
+          metricMeasureColumn: 'promedio'
+          operator: 'GreaterThan'
+          threshold: 100
+          failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 }
+        }
+      ]
+    }
+    actions: { actionGroups: [alerts.id] }
+  }
+}
+
 resource budget 'Microsoft.Consumption/budgets@2024-08-01' = {
   name: 'budget-${name}'
   properties: {

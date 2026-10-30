@@ -11,6 +11,7 @@ import { MatchmakingService } from './lobby/matchmaking-service.js';
 import { RoomsService } from './lobby/rooms-service.js';
 import { MatchStore } from './matches/match-store.js';
 import { MatchesService } from './matches/matches-service.js';
+import { createGameMetrics, type GameMetrics } from './observability/metrics.js';
 import { RedisEventBus, type EventBus } from './realtime/bus.js';
 import { RealtimeGateway } from './realtime/gateway.js';
 import { Presence } from './realtime/presence.js';
@@ -23,11 +24,12 @@ export interface Services extends ApiServices {
   readonly bus: EventBus;
   readonly presence: Presence;
   readonly sweeper: Sweeper;
+  readonly metrics: GameMetrics;
   readonly ephemeralJwtKey: boolean;
 }
 
 /** Logger que no escribe nada (para construir servicios fuera del servidor, como al generar OpenAPI). */
-export const silentLog = { warn: () => undefined, error: () => undefined };
+export const silentLog = { info: () => undefined, warn: () => undefined, error: () => undefined };
 
 /** Arma los servicios de la aplicación con sus dependencias reales. */
 export async function createServices(deps: {
@@ -35,12 +37,14 @@ export async function createServices(deps: {
   redis: RedisClient;
   config: Config;
   clock: Clock;
-  log: Pick<FastifyBaseLogger, 'warn' | 'error'>;
+  log: Pick<FastifyBaseLogger, 'info' | 'warn' | 'error'>;
 }): Promise<Services> {
   const { db, redis, config, clock, log } = deps;
   const tokens = await createTokenIssuer(config);
   const bus = new RedisEventBus(redis, log);
-  const store = new MatchStore({ db, clock, rng: cryptoRng, turnTimeoutMs: config.TURN_TIMEOUT_MS, bus });
+  // Se crean aquí y no al importar el módulo: así ya está registrado el SDK de OpenTelemetry.
+  const metrics = createGameMetrics();
+  const store = new MatchStore({ db, clock, rng: cryptoRng, turnTimeoutMs: config.TURN_TIMEOUT_MS, bus, metrics });
   // El arriendo de presencia cubre dos heartbeats: si no llega un pong en ese tiempo, la conexión se da por muerta.
   const presence = new Presence({
     redis,
@@ -55,6 +59,7 @@ export async function createServices(deps: {
     store,
     bus,
     presence,
+    metrics,
     ephemeralJwtKey: tokens.ephemeralKey,
     tickets: new TicketStore(redis, config.WS_TICKET_TTL_S),
     auth: new AuthService({ db, tokens, clock, refreshTtlSeconds: config.REFRESH_TOKEN_TTL_S }),
@@ -94,6 +99,7 @@ export function createRealtime(deps: {
     subscriber: deps.subscriber,
     log: deps.log,
     isDraining: deps.isDraining,
+    metrics: services.metrics,
     options: {
       allowedOrigins: config.ALLOWED_ORIGINS,
       heartbeatIntervalMs: config.WS_HEARTBEAT_INTERVAL_MS,

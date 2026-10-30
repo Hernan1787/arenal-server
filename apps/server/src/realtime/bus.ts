@@ -33,6 +33,8 @@ export const userChannel = (userId: string): string => `arenal:user:${userId}`;
 export interface MatchEventsMessage {
   readonly matchId: string;
   readonly events: readonly SequencedEvent[];
+  /** Hora de publicación (ms desde epoch), para medir cuánto tarda en llegar a cada jugador. */
+  readonly publishedAt?: number;
 }
 
 /** Avisos por el canal de cada usuario. */
@@ -47,7 +49,7 @@ export class RedisEventBus implements EventBus {
 
   async matchEvents(matchId: string, events: readonly SequencedEvent[]): Promise<void> {
     if (events.length === 0) return;
-    const message: MatchEventsMessage = { matchId, events };
+    const message: MatchEventsMessage = { matchId, events, publishedAt: Date.now() };
     await this.publish(matchChannel(matchId), message);
   }
 

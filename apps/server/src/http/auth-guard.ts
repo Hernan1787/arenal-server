@@ -37,6 +37,8 @@ export function requireAuth(tokens: TokenIssuer, auth: Pick<AuthService, 'accoun
     if (account === null) throw unauthorized('La cuenta ya no existe');
     if (account.suspended) throw new AppError('forbidden', 'La cuenta está suspendida', 'ACCOUNT_SUSPENDED');
     request.authUser = { id: claims.userId, role: account.role };
+    // Los logs que siguen en esta solicitud (handlers, errores) llevan el ID del usuario.
+    request.log = request.log.child({ userId: claims.userId });
   };
 }
 

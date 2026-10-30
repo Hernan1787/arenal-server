@@ -15,7 +15,10 @@ import { projectEvent, viewFor } from '@arenal/domain';
 import type { FastifyBaseLogger } from 'fastify';
 import { WebSocketServer, type RawData, type WebSocket } from 'ws';
 import type { AuthService } from '../auth/auth-service.js';
+import { SpanKind } from '@opentelemetry/api';
 import type { ApplyResult, MatchStore } from '../matches/match-store.js';
+import { createGameMetrics, type GameMetrics } from '../observability/metrics.js';
+import { attr, withSpan } from '../observability/tracing.js';
 import type { MatchesService } from '../matches/matches-service.js';
 import type { RedisClient } from '../infra/redis.js';
 import { matchChannel, userChannel, type MatchEventsMessage, type SequencedEvent, type UserMessage } from './bus.js';
@@ -44,6 +47,7 @@ export interface RealtimeDeps {
   readonly log: FastifyBaseLogger;
   readonly isDraining: () => boolean;
   readonly options: RealtimeOptions;
+  readonly metrics?: GameMetrics;
 }
 
 type CloseCode = keyof typeof CLOSE_CODES;
@@ -144,8 +148,10 @@ export class RealtimeGateway {
   private readonly byMatch = new Map<string, Set<Session>>();
   private readonly byUser = new Map<string, Set<Session>>();
   private readonly heartbeat: NodeJS.Timeout;
+  private readonly metrics: GameMetrics;
 
   constructor(private readonly deps: RealtimeDeps) {
+    this.metrics = deps.metrics ?? createGameMetrics();
     this.heartbeat = setInterval(() => {
       this.checkHeartbeats();
     }, deps.options.heartbeatIntervalMs);
@@ -238,8 +244,8 @@ export class RealtimeGateway {
     ws.on('error', (err) => {
       this.deps.log.warn({ err, userId }, 'error en la conexión WebSocket');
     });
-    ws.on('close', () => {
-      void this.onClose(session);
+    ws.on('close', (code) => {
+      void this.onClose(session, code);
     });
     ws.on('pong', () => {
       session.lastPong = Date.now();
@@ -266,11 +272,16 @@ export class RealtimeGateway {
     }
 
     const active = await this.deps.matches.activeMatchOf(userId);
+    this.deps.log.info({ userId, connectionId: session.id, matchId: active }, 'conexión abierta');
     if (active !== null && !session.isClosed()) session.enqueue(() => this.attachToMatch(session, active));
   }
 
-  private async onClose(session: Session): Promise<void> {
+  private async onClose(session: Session, code: number): Promise<void> {
     session.markClosed();
+    this.deps.log.info(
+      { userId: session.userId, connectionId: session.id, matchId: session.matchId, code },
+      'conexión cerrada',
+    );
     await this.removeFromMatch(session);
     await this.removeUserSession(session);
     await this.deps.presence.disconnect(session.userId, session.id).catch((err: unknown) => {
@@ -283,12 +294,17 @@ export class RealtimeGateway {
   private onMessage(session: Session, data: RawData, isBinary: boolean): void {
     if (!session.bucket.take()) {
       session.violations += 1;
+      this.metrics.messageRejected('RATE_LIMITED');
       session.error(null, 'RATE_LIMITED', 'Demasiados mensajes; baja el ritmo', true);
       if (session.violations > 20) session.close(4029, 'Demasiados mensajes');
       return;
     }
+    const reject = (id: string | null, code: ErrorCode, message: string): void => {
+      this.metrics.messageRejected(code);
+      session.error(id, code, message);
+    };
     if (isBinary) {
-      session.error(null, 'INVALID_MESSAGE', 'Solo se aceptan mensajes de texto JSON');
+      reject(null, 'INVALID_MESSAGE', 'Solo se aceptan mensajes de texto JSON');
       return;
     }
 
@@ -296,23 +312,40 @@ export class RealtimeGateway {
     try {
       raw = JSON.parse(rawToString(data));
     } catch {
-      session.error(null, 'INVALID_MESSAGE', 'El mensaje no es JSON válido');
+      reject(null, 'INVALID_MESSAGE', 'El mensaje no es JSON válido');
       return;
     }
     const id = extractId(raw);
     if (typeof raw === 'object' && raw !== null && 'v' in raw && raw.v !== PROTOCOL_VERSION) {
-      session.error(id, 'UNSUPPORTED_VERSION', `Este servidor habla la versión ${PROTOCOL_VERSION} del protocolo`);
+      reject(id, 'UNSUPPORTED_VERSION', `Este servidor habla la versión ${PROTOCOL_VERSION} del protocolo`);
       return;
     }
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
-      session.error(id, 'INVALID_MESSAGE', parsed.reason);
+      reject(id, 'INVALID_MESSAGE', parsed.reason);
       return;
     }
 
-    this.handle(session, parsed.message).catch((err: unknown) => {
-      this.deps.log.error({ err, userId: session.userId, type: parsed.message.type }, 'falló un mensaje de WebSocket');
-      session.error(parsed.message.id, 'INTERNAL', 'Error interno; vuelve a intentar', true);
+    const message = parsed.message;
+    // Cada mensaje es una traza propia: las consultas y los logs que produce quedan adentro,
+    // con el ID de la partida y del jugador para buscarla.
+    withSpan(
+      `ws ${message.type}`,
+      {
+        kind: SpanKind.SERVER,
+        attributes: {
+          [attr.matchId]: message.matchId,
+          [attr.playerId]: session.userId,
+          'arenal.message.id': message.id,
+        },
+      },
+      () => this.handle(session, message),
+    ).catch((err: unknown) => {
+      this.deps.log.error(
+        { err, userId: session.userId, matchId: message.matchId, type: message.type },
+        'falló un mensaje de WebSocket',
+      );
+      session.error(message.id, 'INTERNAL', 'Error interno; vuelve a intentar', true);
     });
   }
 
@@ -324,7 +357,7 @@ export class RealtimeGateway {
           { type: 'play_card', playerId: session.userId, cardId: message.payload.cardId },
           { moveId: message.id, actorId: session.userId, expectedSeq: message.expectedSeq },
         );
-        this.reply(session, message.id, result);
+        this.reply(session, message, result);
         return;
       }
       case 'leave_match': {
@@ -333,7 +366,7 @@ export class RealtimeGateway {
           { type: 'abandon', playerId: session.userId },
           { moveId: message.id, actorId: session.userId },
         );
-        this.reply(session, message.id, result);
+        this.reply(session, message, result);
         return;
       }
       case 'resume': {
@@ -347,7 +380,20 @@ export class RealtimeGateway {
     }
   }
 
-  private reply(session: Session, id: string, result: ApplyResult): void {
+  private reply(session: Session, message: ClientMessage, result: ApplyResult): void {
+    const { id } = message;
+    // Una línea por jugada, con la partida y el jugador; dentro de la traza del mensaje.
+    this.deps.log.info(
+      {
+        matchId: message.matchId,
+        userId: session.userId,
+        type: message.type,
+        outcome: result.kind,
+        seq: result.seq,
+        ...(result.kind === 'rejected' && { code: result.code }),
+      },
+      'jugada',
+    );
     switch (result.kind) {
       case 'applied': {
         session.send({ v: PROTOCOL_VERSION, type: 'ack', id, seq: result.seq, duplicate: false });
@@ -396,8 +442,14 @@ export class RealtimeGateway {
   }
 
   /** Manda los eventos que la conexión no tiene, en orden y sin huecos. */
-  private async deliver(session: Session, matchId: string, events: readonly SequencedEvent[]): Promise<void> {
+  private async deliver(
+    session: Session,
+    matchId: string,
+    events: readonly SequencedEvent[],
+    publishedAt?: number,
+  ): Promise<void> {
     if (session.matchId !== matchId) return;
+    let sent = false;
     for (const { seq, event } of [...events].sort((a, b) => a.seq - b.seq)) {
       if (seq <= session.lastSeq) continue;
       if (seq > session.lastSeq + 1) {
@@ -405,14 +457,16 @@ export class RealtimeGateway {
         const missing = await this.deps.store.eventsBetween(matchId, session.lastSeq, seq - 1);
         for (const m of missing) this.sendEvent(session, matchId, m);
       }
-      this.sendEvent(session, matchId, { seq, event });
+      sent = this.sendEvent(session, matchId, { seq, event }) || sent;
     }
+    if (sent && publishedAt !== undefined) this.metrics.eventDelivered(Date.now() - publishedAt);
   }
 
-  private sendEvent(session: Session, matchId: string, { seq, event }: SequencedEvent): void {
-    if (seq !== session.lastSeq + 1) return;
+  private sendEvent(session: Session, matchId: string, { seq, event }: SequencedEvent): boolean {
+    if (seq !== session.lastSeq + 1) return false;
     session.lastSeq = seq;
     session.send({ v: PROTOCOL_VERSION, type: 'event', matchId, seq, event: projectEvent(event, session.userId) });
+    return true;
   }
 
   private readonly onMatchMessage = (raw: string): void => {
@@ -424,7 +478,9 @@ export class RealtimeGateway {
     }
     const sessions = this.byMatch.get(message.matchId);
     if (sessions === undefined) return;
-    for (const session of sessions) session.enqueue(() => this.deliver(session, message.matchId, message.events));
+    for (const session of sessions) {
+      session.enqueue(() => this.deliver(session, message.matchId, message.events, message.publishedAt));
+    }
   };
 
   private readonly onUserMessage = (raw: string, channel: string): void => {

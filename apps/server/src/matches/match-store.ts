@@ -15,6 +15,8 @@ import {
 import type { Clock } from '../clock.js';
 import { pgErrorCode, PG_UNIQUE_VIOLATION, withTransaction, type Db, type Tx } from '../db/tx.js';
 import { conflict } from '../errors.js';
+import { createGameMetrics, type GameMetrics } from '../observability/metrics.js';
+import { attr, withSpan } from '../observability/tracing.js';
 import { noopBus, type EventBus, type SequencedEvent } from '../realtime/bus.js';
 
 export type MatchOrigin = 'room' | 'matchmaking';
@@ -73,6 +75,7 @@ export interface MatchStoreDeps {
   readonly turnTimeoutMs: number;
   /** Avisa a las demás réplicas de cada jugada confirmada. */
   readonly bus?: EventBus;
+  readonly metrics?: GameMetrics;
 }
 
 /**
@@ -82,9 +85,11 @@ export interface MatchStoreDeps {
  */
 export class MatchStore {
   private readonly bus: EventBus;
+  private readonly metrics: GameMetrics;
 
   constructor(private readonly deps: MatchStoreDeps) {
     this.bus = deps.bus ?? noopBus;
+    this.metrics = deps.metrics ?? createGameMetrics();
   }
 
   /** Crea una partida dentro de la transacción del llamador (sala que arranca o cola). */
@@ -126,9 +131,24 @@ export class MatchStore {
     if (options.moveId !== undefined && options.actorId === undefined) {
       throw new Error('Una jugada con moveId necesita actorId');
     }
-    const result = await this.applyInTransaction(matchId, intent, options);
-    if (result.kind === 'applied') await this.bus.matchEvents(matchId, result.events);
-    return result;
+    const attributes = {
+      [attr.matchId]: matchId,
+      [attr.intent]: intent.type,
+      ...('playerId' in intent && { [attr.playerId]: intent.playerId }),
+    };
+    return withSpan('match.apply', { attributes }, async (span) => {
+      const started = performance.now();
+      const result = await this.applyInTransaction(matchId, intent, options);
+      if (result.kind === 'applied') await this.bus.matchEvents(matchId, result.events);
+      const code = result.kind === 'rejected' ? result.code : undefined;
+      span.setAttributes({
+        [attr.outcome]: result.kind,
+        ...(result.seq !== null && { [attr.seq]: result.seq }),
+        ...(code !== undefined && { [attr.code]: code }),
+      });
+      this.metrics.intentProcessed(intent.type, result.kind, performance.now() - started, code);
+      return result;
+    });
   }
 
   private applyInTransaction(matchId: string, intent: Intent, options: ApplyOptions): Promise<ApplyResult> {

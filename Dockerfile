@@ -32,4 +32,5 @@ USER node
 EXPOSE 8080
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
-CMD ["node", "dist/main.js"]
+# instrument.js arranca OpenTelemetry antes que el servidor (solo si hay conexión con App Insights).
+CMD ["node", "--import", "./dist/instrument.js", "dist/main.js"]
