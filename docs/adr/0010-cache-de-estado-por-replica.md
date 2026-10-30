@@ -28,6 +28,8 @@ tienen la partida en caché, a cambio de una escritura extra cada tantas jugadas
 
 ## Consecuencias
 
+- Medido en local con 300 partidas simultáneas: el p95 de punta a punta bajó de 271 a 81 ms y el servidor pasó de
+  625 a 961 jugadas por segundo ([load-test.md](../load-test.md)).
 - Una jugada no lee eventos cuando la réplica que la recibe también procesó la anterior de esa partida. Con una
   réplica pasa siempre; con varias y el tráfico repartido al azar, más o menos una de cada N. Un fallo nunca cuesta
   más que antes. La métrica `arenal.state.loads` muestra la proporción real de aciertos.
