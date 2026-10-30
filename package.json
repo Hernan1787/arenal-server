@@ -40,7 +40,8 @@
   "pnpm": {
     "ignoredBuiltDependencies": [
       "@scarf/scarf",
-      "esbuild"
+      "esbuild",
+      "protobufjs"
     ]
   }
 }
