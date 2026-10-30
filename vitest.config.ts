@@ -8,6 +8,7 @@ export default defineConfig({
     alias: {
       '@arenal/domain': src('./packages/domain/src/index.ts'),
       '@arenal/contracts': src('./packages/contracts/src/index.ts'),
+      '@arenal/client': src('./packages/client/src/index.ts'),
     },
   },
   test: {

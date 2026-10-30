@@ -12,11 +12,13 @@ import {
   type Rng,
   type RuleErrorCode,
 } from '@arenal/domain';
+import { trace } from '@opentelemetry/api';
 import type { Clock } from '../clock.js';
 import { pgErrorCode, PG_UNIQUE_VIOLATION, withTransaction, type Db, type Tx } from '../db/tx.js';
 import { conflict } from '../errors.js';
 import { createGameMetrics, type GameMetrics } from '../observability/metrics.js';
 import { attr, withSpan } from '../observability/tracing.js';
+import { StateCache } from './state-cache.js';
 import { noopBus, type EventBus, type SequencedEvent } from '../realtime/bus.js';
 
 export type MatchOrigin = 'room' | 'matchmaking';
@@ -76,6 +78,8 @@ export interface MatchStoreDeps {
   /** Avisa a las demás réplicas de cada jugada confirmada. */
   readonly bus?: EventBus;
   readonly metrics?: GameMetrics;
+  /** Partidas que guarda en memoria esta réplica (0 la desactiva). Ver `StateCache`. */
+  readonly stateCacheSize?: number;
 }
 
 /**
@@ -86,10 +90,12 @@ export interface MatchStoreDeps {
 export class MatchStore {
   private readonly bus: EventBus;
   private readonly metrics: GameMetrics;
+  private readonly cache: StateCache;
 
   constructor(private readonly deps: MatchStoreDeps) {
     this.bus = deps.bus ?? noopBus;
     this.metrics = deps.metrics ?? createGameMetrics();
+    this.cache = new StateCache(deps.stateCacheSize ?? 0);
   }
 
   /** Crea una partida dentro de la transacción del llamador (sala que arranca o cola). */
@@ -139,7 +145,11 @@ export class MatchStore {
     return withSpan('match.apply', { attributes }, async (span) => {
       const started = performance.now();
       const result = await this.applyInTransaction(matchId, intent, options);
-      if (result.kind === 'applied') await this.bus.matchEvents(matchId, result.events);
+      if (result.kind === 'applied') {
+        // Ya confirmado: el estado nuevo sirve para la próxima jugada de esta réplica.
+        this.cache.set(matchId, result.state);
+        await this.bus.matchEvents(matchId, result.events);
+      }
       const code = result.kind === 'rejected' ? result.code : undefined;
       span.setAttributes({
         [attr.outcome]: result.kind,
@@ -181,7 +191,7 @@ export class MatchStore {
         };
       }
 
-      const state = await this.loadState(tx, row);
+      const state = await this.stateAt(tx, row);
       const decision = decide(state, intent, { rng: this.deps.rng });
       if (!decision.ok) {
         return { kind: 'rejected', code: decision.error.code, message: decision.error.message, seq: row.seq };
@@ -207,7 +217,7 @@ export class MatchStore {
     const { rows } = await this.deps.db.query<MatchRow>('SELECT * FROM matches WHERE id = $1', [matchId]);
     const row = rows[0];
     if (row === undefined) return undefined;
-    return { row, state: await this.loadState(this.deps.db, row) };
+    return { row, state: await this.stateAt(this.deps.db, row) };
   }
 
   async events(matchId: string): Promise<SequencedEvent[]> {
@@ -228,14 +238,26 @@ export class MatchStore {
     return rows[0];
   }
 
+  /** El estado de la partida en `row.seq`: de la caché si está en esa versión, si no, de Postgres. */
+  private async stateAt(db: Pick<Db, 'query'>, row: MatchRow): Promise<GameState> {
+    const cached = this.cache.get(row.id, row.seq);
+    trace.getActiveSpan()?.setAttribute(attr.stateSource, cached === undefined ? 'database' : 'cache');
+    this.metrics.stateLoaded(cached === undefined ? 'database' : 'cache');
+    if (cached !== undefined) return cached;
+    const state = await this.loadState(db, row);
+    // Es estado confirmado (la fila está en esa versión), así que ya puede ir a la caché.
+    this.cache.set(row.id, state);
+    return state;
+  }
+
   /**
-   * Reconstruye el estado desde el inicio con todos los eventos. Es la versión simple a
-   * propósito: la prueba de carga mide su costo antes de optimizarla.
+   * Reconstruye el estado desde el inicio con los eventos hasta `row.seq`. El límite hace que
+   * una lectura sin bloqueo (un snapshot) no mezcle una fila vieja con eventos más nuevos.
    */
   private async loadState(db: Pick<Db, 'query'>, row: MatchRow): Promise<GameState> {
     const { rows } = await db.query<{ event: DomainEvent }>(
-      'SELECT event FROM match_events WHERE match_id = $1 ORDER BY seq',
-      [row.id],
+      'SELECT event FROM match_events WHERE match_id = $1 AND seq <= $2 ORDER BY seq',
+      [row.id, row.seq],
     );
     const state = replay(
       createMatch(row.id, row.player_ids, row.config),

@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import {
+  applyPlayerEvent,
   createMatch,
   decide,
   deckSize,
@@ -113,6 +114,24 @@ describe('información oculta', () => {
             if (projected.type === 'SeismoRead' && projected.playerId !== viewer) {
               expect(projected).not.toHaveProperty('near');
             }
+          }
+        }
+      }),
+      { numRuns: 60 },
+    );
+  });
+});
+
+describe('vista del cliente', () => {
+  it('aplicar a la vista de cada jugador sus eventos filtrados da lo mismo que pedirle la vista al servidor', () => {
+    fc.assert(
+      fc.property(gameArb, ({ players, seed }) => {
+        const { steps } = simulate(players, seed);
+        for (const { before, event, after } of steps) {
+          for (const viewer of [...after.players.map((p) => p.id), null]) {
+            expect(applyPlayerEvent(viewFor(before, viewer), projectEvent(event, viewer))).toEqual(
+              viewFor(after, viewer),
+            );
           }
         }
       }),

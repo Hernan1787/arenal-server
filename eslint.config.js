@@ -55,7 +55,7 @@ export default tseslint.config(
   },
   {
     // Herramientas de línea de comandos: su salida es la consola.
-    files: ['infra/scripts/**/*.mjs'],
+    files: ['infra/scripts/**/*.mjs', 'apps/bot/src/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
   {

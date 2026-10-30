@@ -1,0 +1,73 @@
+{
+  "url": "http://localhost:18330",
+  "playersPerMatch": 2,
+  "label": "despues-quiebre",
+  "results": [
+    {
+      "matches": 500,
+      "players": 1000,
+      "durationS": 45.4,
+      "thinkMs": 250,
+      "moves": 41646,
+      "movesPerSecond": 916.9,
+      "latencyMs": {
+        "p50": 209.2,
+        "p95": 286.7,
+        "p99": 334.3,
+        "max": 419.9,
+        "mean": 209.2
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 984,
+      "server": {
+        "cpuPercentAvg": 58.4,
+        "cpuPercentMax": 65.9,
+        "rssMbAvg": 323.7,
+        "rssMbMax": 377.2
+      },
+      "database": {
+        "cpuPercentAvg": 86.2,
+        "cpuPercentMax": 96
+      },
+      "meetsGoals": false
+    },
+    {
+      "matches": 600,
+      "players": 1200,
+      "durationS": 45.7,
+      "thinkMs": 250,
+      "moves": 41428,
+      "movesPerSecond": 906.3,
+      "latencyMs": {
+        "p50": 301.6,
+        "p95": 412.9,
+        "p99": 452.9,
+        "max": 482.9,
+        "mean": 306.5
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 1036,
+      "server": {
+        "cpuPercentAvg": 58,
+        "cpuPercentMax": 66.9,
+        "rssMbAvg": 378.5,
+        "rssMbMax": 378.5
+      },
+      "database": {
+        "cpuPercentAvg": 85.3,
+        "cpuPercentMax": 93.9
+      },
+      "meetsGoals": false
+    }
+  ]
+}

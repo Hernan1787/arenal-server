@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
-import rateLimit from '@fastify/rate-limit';
+import rateLimit, { type FastifyRateLimitStoreCtor } from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
@@ -40,6 +40,8 @@ export interface AppOptions {
   /** Orígenes de navegador permitidos (CORS). Sin lista, ningún origen cruzado. */
   readonly allowedOrigins?: readonly string[];
   readonly rateLimits?: RateLimits;
+  /** Contadores compartidos entre réplicas (Redis). Sin él, cada réplica cuenta por su cuenta. */
+  readonly rateLimitStore?: FastifyRateLimitStoreCtor;
 }
 
 const BODY_LIMIT_BYTES = 16 * 1024;
@@ -113,9 +115,9 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
   });
 
   await app.register(rateLimit, {
-    // Solo las rutas que lo piden (login, registro…). Por ahora en memoria de cada réplica;
-    // el bloque de seguridad lo pasa a Redis para que el límite sea compartido.
+    // Cada ruta de la API declara su límite (por IP o por usuario); las sondas y /docs no tienen.
     global: false,
+    ...(options.rateLimitStore !== undefined && { store: options.rateLimitStore, skipOnError: true }),
     errorResponseBuilder: (_request, context) =>
       new AppError('rate-limited', `Demasiadas solicitudes; vuelve a intentar en ${context.after}`),
   });

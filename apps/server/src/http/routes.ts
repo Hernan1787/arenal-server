@@ -32,9 +32,16 @@ export interface RateLimits {
   readonly ticketsPerMinute: number;
   /** Rutas de administración, por usuario. */
   readonly adminPerMinute: number;
+  /** Cualquier otra ruta autenticada, por usuario. */
+  readonly userPerMinute: number;
 }
 
-export const DEFAULT_RATE_LIMITS: RateLimits = { authPerMinute: 10, ticketsPerMinute: 30, adminPerMinute: 120 };
+export const DEFAULT_RATE_LIMITS: RateLimits = {
+  authPerMinute: 10,
+  ticketsPerMinute: 30,
+  adminPerMinute: 120,
+  userPerMinute: 300,
+};
 
 /** Rutas de la API v1. Todo lo que no es tiempo real pasa por aquí. */
 export function registerApiRoutes(
@@ -44,6 +51,8 @@ export function registerApiRoutes(
 ): void {
   const app = root.withTypeProvider<ZodTypeProvider>();
   const auth = requireAuth(services.tokens, services.auth);
+  // Toda ruta autenticada tiene límite por usuario; las que necesitan uno más estricto lo declaran.
+  const authenticated = { config: perUser(limits.userPerMinute), preHandler: auth };
 
   // --- Usuarios ----------------------------------------------------------------------------
 
@@ -87,8 +96,9 @@ export function registerApiRoutes(
       tags: ['Usuarios'],
       summary: 'Cerrar sesión',
       body: S.RefreshBody,
-      response: { 204: z.null().describe('Sesión cerrada'), ...S.errors(400) },
+      response: { 204: z.null().describe('Sesión cerrada'), ...S.errors(400, 429) },
     },
+    config: perIp(limits.authPerMinute * 3),
     handler: async (request, reply) => {
       await services.auth.logout(request.body.refreshToken);
       return reply.code(204).send(null);
@@ -100,9 +110,9 @@ export function registerApiRoutes(
       tags: ['Usuarios'],
       summary: 'Ver mi perfil',
       security: bearer,
-      response: { 200: S.Profile, ...S.errors(401, 403) },
+      response: { 200: S.Profile, ...S.errors(401, 403, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.auth.profile(currentUser(request).id),
   });
 
@@ -112,9 +122,9 @@ export function registerApiRoutes(
       summary: 'Cambiar mi nombre visible',
       security: bearer,
       body: S.UpdateProfileBody,
-      response: { 200: S.Profile, ...S.errors(400, 401, 403) },
+      response: { 200: S.Profile, ...S.errors(400, 401, 403, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.auth.updateProfile(currentUser(request).id, request.body),
   });
 
@@ -125,9 +135,9 @@ export function registerApiRoutes(
       description: 'Partidas en las que participé, de la más nueva a la más vieja.',
       security: bearer,
       querystring: S.PageQuery,
-      response: { 200: S.MatchPage, ...S.errors(400, 401, 403) },
+      response: { 200: S.MatchPage, ...S.errors(400, 401, 403, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.matches.history(currentUser(request).id, request.query),
   });
 
@@ -140,9 +150,9 @@ export function registerApiRoutes(
       description: 'Quien la crea entra como anfitrión. Una sala privada trae un código de invitación de 8 caracteres.',
       security: bearer,
       body: S.CreateRoomBody,
-      response: { 201: S.Room, ...S.errors(400, 401, 403, 409) },
+      response: { 201: S.Room, ...S.errors(400, 401, 403, 409, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: async (request, reply) =>
       reply.code(201).send(await services.rooms.create(currentUser(request).id, request.body)),
   });
@@ -153,9 +163,9 @@ export function registerApiRoutes(
       summary: 'Listar salas públicas abiertas',
       security: bearer,
       querystring: S.PageQuery,
-      response: { 200: S.RoomPage, ...S.errors(400, 401, 403) },
+      response: { 200: S.RoomPage, ...S.errors(400, 401, 403, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.rooms.listOpen(request.query),
   });
 
@@ -165,9 +175,9 @@ export function registerApiRoutes(
       summary: 'Ver una sala',
       security: bearer,
       params: S.IdParams,
-      response: { 200: S.Room, ...S.errors(400, 401, 403, 404) },
+      response: { 200: S.Room, ...S.errors(400, 401, 403, 404, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.rooms.get(request.params.id, currentUser(request).id),
   });
 
@@ -177,9 +187,9 @@ export function registerApiRoutes(
       summary: 'Unirse a una sala pública',
       security: bearer,
       params: S.IdParams,
-      response: { 200: S.Room, ...S.errors(400, 401, 403, 404, 409) },
+      response: { 200: S.Room, ...S.errors(400, 401, 403, 404, 409, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.rooms.join(request.params.id, currentUser(request).id),
   });
 
@@ -202,9 +212,9 @@ export function registerApiRoutes(
       summary: 'Salir de una sala',
       security: bearer,
       params: S.IdParams,
-      response: { 204: z.null(), ...S.errors(400, 401, 403, 404, 409) },
+      response: { 204: z.null(), ...S.errors(400, 401, 403, 404, 409, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: async (request, reply) => {
       await services.rooms.leave(request.params.id, currentUser(request).id);
       return reply.code(204).send(null);
@@ -220,9 +230,9 @@ export function registerApiRoutes(
       security: bearer,
       params: S.IdParams,
       body: S.ReadyBody,
-      response: { 200: S.Room, ...S.errors(400, 401, 403, 404, 409) },
+      response: { 200: S.Room, ...S.errors(400, 401, 403, 404, 409, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.rooms.setReady(request.params.id, currentUser(request).id, request.body.ready),
   });
 
@@ -233,9 +243,9 @@ export function registerApiRoutes(
       tags: ['Emparejamiento'],
       summary: 'Entrar a la cola rápida',
       security: bearer,
-      response: { 202: S.TicketStatus, ...S.errors(401, 403, 409) },
+      response: { 202: S.TicketStatus, ...S.errors(401, 403, 409, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: async (request, reply) =>
       reply.code(202).send(await services.matchmaking.enqueue(currentUser(request).id)),
   });
@@ -245,9 +255,9 @@ export function registerApiRoutes(
       tags: ['Emparejamiento'],
       summary: 'Ver el estado de mi ticket',
       security: bearer,
-      response: { 200: S.TicketStatus, ...S.errors(401, 403) },
+      response: { 200: S.TicketStatus, ...S.errors(401, 403, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: (request) => services.matchmaking.status(currentUser(request).id),
   });
 
@@ -256,9 +266,9 @@ export function registerApiRoutes(
       tags: ['Emparejamiento'],
       summary: 'Salir de la cola',
       security: bearer,
-      response: { 204: z.null(), ...S.errors(401, 403) },
+      response: { 204: z.null(), ...S.errors(401, 403, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: async (request, reply) => {
       await services.matchmaking.cancel(currentUser(request).id);
       return reply.code(204).send(null);
@@ -293,9 +303,9 @@ export function registerApiRoutes(
         'Solo para participantes. Se usa al conectarse; los cambios llegan por WebSocket, no consultando esta ruta.',
       security: bearer,
       params: S.IdParams,
-      response: { 200: S.MatchSnapshot, ...S.errors(400, 401, 403, 404) },
+      response: { 200: S.MatchSnapshot, ...S.errors(400, 401, 403, 404, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: async (request) => {
       const snapshot = await services.matches.snapshot(request.params.id, currentUser(request).id);
       return { ...snapshot, view: PlayerViewSchema.parse(snapshot.view) };
@@ -309,9 +319,9 @@ export function registerApiRoutes(
       description: 'Solo para participantes y partidas terminadas. Cada evento viene filtrado para quien lo pide.',
       security: bearer,
       params: S.IdParams,
-      response: { 200: S.MatchReplay, ...S.errors(400, 401, 403, 404, 409) },
+      response: { 200: S.MatchReplay, ...S.errors(400, 401, 403, 404, 409, 429) },
     },
-    preHandler: auth,
+    ...authenticated,
     handler: async (request) => {
       const replay = await services.matches.replay(request.params.id, currentUser(request).id);
       return {

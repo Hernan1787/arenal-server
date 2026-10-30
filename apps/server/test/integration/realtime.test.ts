@@ -234,12 +234,14 @@ describe('errores tipados sin cortar la partida', () => {
     expect((await socket.closed).code).toBe(1009);
   });
 
-  it('una ráfaga de mensajes recibe RATE_LIMITED', async () => {
+  it('una ráfaga de mensajes recibe RATE_LIMITED, con el id del mensaje frenado para reintentarlo', async () => {
     const user = await registerUser(h.app);
     const socket = await connect(user);
-    for (let i = 0; i < 40; i++) socket.sendRaw('{}');
+    const ids = Array.from({ length: 40 }, () => randomUUID());
+    for (const id of ids) socket.send({ v: 1, type: 'resume', id, matchId: randomUUID(), lastSeq: 0 });
     const limited = await socket.next((m) => m.type === 'error' && m.code === 'RATE_LIMITED');
     expect(limited).toMatchObject({ retryable: true });
+    expect(ids).toContain(limited.type === 'error' ? limited.id : null);
     await socket.close();
   });
 

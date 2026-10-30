@@ -2,3 +2,4 @@ pnpm-lock.yaml
 packages/contracts/generated/
 **/dist/
 coverage/
+docs/load-results/

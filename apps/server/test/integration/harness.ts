@@ -91,11 +91,13 @@ export function useHarness(options: HarnessOptions = {}): Harness {
         },
       },
       api: services,
+      rateLimitStore: services.rateLimitStore,
       allowedOrigins: h.config.ALLOWED_ORIGINS,
       rateLimits: {
         authPerMinute: h.config.RATE_LIMIT_AUTH_PER_MINUTE,
         ticketsPerMinute: h.config.RATE_LIMIT_TICKETS_PER_MINUTE,
         adminPerMinute: h.config.RATE_LIMIT_ADMIN_PER_MINUTE,
+        userPerMinute: h.config.RATE_LIMIT_USER_PER_MINUTE,
       },
     });
     let realtime: RealtimeGateway | null = null;
