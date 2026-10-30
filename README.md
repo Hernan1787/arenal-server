@@ -10,23 +10,23 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 
 ## Estado
 
-| Parte                                          | Estado                                                                                                           |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| Motor de reglas (`packages/domain`)            | Listo, con pruebas unitarias y de propiedades                                                                    |
-| Contrato en tiempo real (`packages/contracts`) | Mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                       |
-| Usuarios                                       | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256                                         |
-| Salas                                          | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica            |
-| Emparejamiento                                 | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas                               |
-| Partidas                                       | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición |
-| API REST                                       | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details                                                     |
-| Tiempo real                                    | WebSocket con ticket de un solo uso, heartbeat, límites por conexión, snapshot al conectar y eventos en orden    |
-| Reloj del servidor                             | Turnos con temporizador y acción por defecto; periodo de gracia y abandono                                       |
-| Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                    |
-| Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado      |
-| Infraestructura en Azure (Bicep) y despliegue  | Pendiente                                                                                                        |
-| Prueba de carga                                | Pendiente                                                                                                        |
+| Parte                                          | Estado                                                                                                                      |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Motor de reglas (`packages/domain`)            | Listo, con pruebas unitarias y de propiedades                                                                               |
+| Contrato en tiempo real (`packages/contracts`) | Mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                                  |
+| Usuarios                                       | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256                                                    |
+| Salas                                          | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica                       |
+| Emparejamiento                                 | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas                                          |
+| Partidas                                       | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición            |
+| API REST                                       | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details                                                                |
+| Tiempo real                                    | WebSocket con ticket de un solo uso, heartbeat, límites por conexión, snapshot al conectar y eventos en orden               |
+| Reloj del servidor                             | Turnos con temporizador y acción por defecto; periodo de gracia y abandono                                                  |
+| Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                               |
+| Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado                 |
+| Infraestructura en Azure (Bicep) y despliegue  | Bicep completo, identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback; falta la suscripción |
+| Prueba de carga                                | Pendiente                                                                                                                   |
 
-URL pública en Azure: pendiente.
+URL pública en Azure: pendiente (falta activar la suscripción; los pasos están en [docs/deploy.md](docs/deploy.md)).
 
 ## Correr local (menos de 10 minutos)
 
@@ -96,8 +96,10 @@ apps/server
   src/http           rutas, esquemas de la API, guardia de autenticación, Problem Details
   src/db             migraciones y transacciones
   test/integration   pruebas contra Postgres real
-docs/                reglas, decisiones de arquitectura (ADR) y catálogo de errores
-.github/             CI (lint, tipos, pruebas, contratos, gitleaks, imagen, Trivy), CodeQL y Dependabot
+infra/               Bicep (main.bicep, módulos, parámetros de dev y prod) y scripts de despliegue y rollback
+docs/                reglas, decisiones de arquitectura (ADR), catálogo de errores y guía de despliegue
+.github/             CI (lint, tipos, pruebas, contratos, Bicep, gitleaks, imagen, Trivy), despliegue, rollback,
+                     CodeQL y Dependabot
 ```
 
 El dominio no depende de nada: ni red, ni base de datos, ni framework, ni reloj ni `Math.random`. Una regla
@@ -126,3 +128,9 @@ En [docs/adr](docs/adr):
 6. [Autenticación propia con JWT ES256 y refresh rotativo](docs/adr/0006-autenticacion-propia.md)
 7. [Tiempo real entre réplicas: Redis para avisar, Postgres para no perder nada](docs/adr/0007-tiempo-real-entre-replicas.md)
 8. [Administración: acciones por el dominio y auditoría de solo inserción](docs/adr/0008-administracion-y-auditoria.md)
+9. [Despliegue en Azure: Container Apps, identidad administrada y revisiones con tráfico dividido](docs/adr/0009-despliegue-en-azure.md)
+
+## Azure
+
+La guía completa está en [docs/deploy.md](docs/deploy.md): arquitectura, quién accede a qué, la preparación única,
+qué hace cada despliegue, el rollback, cómo reconstruir un ambiente y el costo mensual estimado.

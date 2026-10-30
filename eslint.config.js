@@ -54,6 +54,11 @@ export default tseslint.config(
     ...tseslint.configs.disableTypeChecked,
   },
   {
+    // Herramientas de línea de comandos: su salida es la consola.
+    files: ['infra/scripts/**/*.mjs'],
+    rules: { 'no-console': 'off' },
+  },
+  {
     files: ['**/test/**/*.ts'],
     rules: {
       '@typescript-eslint/no-non-null-assertion': 'off',

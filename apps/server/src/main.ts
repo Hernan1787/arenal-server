@@ -2,7 +2,7 @@ import { buildApp, createLogger, type Lifecycle } from './app.js';
 import { systemClock } from './clock.js';
 import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
-import { checkPostgres, createPostgresPool } from './infra/postgres.js';
+import { checkPostgres, createPostgresPool, ensureDatabase } from './infra/postgres.js';
 import { checkRedis, createRedisClient } from './infra/redis.js';
 import { createRealtime, createServices } from './services.js';
 
@@ -31,9 +31,13 @@ async function main(): Promise<void> {
   const lifecycle: Lifecycle = { draining: false };
   const pool = createPostgresPool(config);
   const redis = createRedisClient(config);
-  const subscriber = redis.duplicate();
+  // Conexión aparte para pub/sub, con su propio proveedor de credenciales.
+  const subscriber = createRedisClient(config);
 
-  if (config.RUN_MIGRATIONS) await migrate(pool);
+  if (config.RUN_MIGRATIONS) {
+    await ensureDatabase(config);
+    await migrate(pool);
+  }
 
   const log = createLogger(config.LOG_LEVEL);
   const services = await createServices({ db: pool, redis, config, clock: systemClock, log });

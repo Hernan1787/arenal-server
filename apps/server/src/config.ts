@@ -5,9 +5,10 @@ const ms = (max: number, fallback: number) => z.coerce.number().int().min(0).max
 
 /**
  * Configuración por variables de entorno. No existe ninguna variable de contraseña de base
- * de datos ni de Redis: en Azure se autentican con la identidad administrada; en local,
- * docker compose corre sin credenciales. El único secreto, la llave de firma de los JWT,
- * llega desde Key Vault como variable de entorno (referencia de secreto de Container Apps).
+ * de datos ni de Redis: en Azure se autentican con la identidad administrada (`PG_AUTH` y
+ * `REDIS_AUTH` en `entra`); en local, docker compose corre sin credenciales. El único secreto,
+ * la llave de firma de los JWT, llega desde Key Vault como variable de entorno (referencia de
+ * secreto de Container Apps, leída con la misma identidad).
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -26,13 +27,20 @@ const EnvSchema = z.object({
   PG_DATABASE: z.string().min(1).default('arenal'),
   PG_USER: z.string().min(1).default('arenal'),
   PG_SSL: z.stringbool().default(false),
+  /** `entra`: token de Entra ID de la identidad administrada (Azure). `none`: sin contraseña (local). */
+  PG_AUTH: z.enum(['none', 'entra']).default('none'),
   RUN_MIGRATIONS: z.stringbool().default(true),
 
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().min(1).max(65535).default(6379),
   REDIS_TLS: z.stringbool().default(false),
+  /** `entra`: identidad administrada (Azure Managed Redis). `none`: sin credenciales (local). */
+  REDIS_AUTH: z.enum(['none', 'entra']).default('none'),
   /** Base lógica de Redis. Producción usa la 0; las pruebas usan otra para poder vaciarla. */
   REDIS_DB: z.coerce.number().int().min(0).max(15).default(0),
+
+  /** Client ID de la identidad administrada asignada por el usuario (la pone Bicep). */
+  AZURE_CLIENT_ID: z.uuid().optional(),
 
   /** Llave privada ES256 en PEM (PKCS#8). Obligatoria en producción. */
   JWT_PRIVATE_KEY: z.string().min(1).optional(),
@@ -97,6 +105,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const config = result.data;
   if (config.NODE_ENV === 'production' && config.JWT_PRIVATE_KEY === undefined) {
     throw new ConfigError('Configuración inválida:\n- JWT_PRIVATE_KEY: obligatoria en producción (viene de Key Vault)');
+  }
+  // Un token de Entra ID nunca debe viajar sin cifrar.
+  if (config.PG_AUTH === 'entra' && !config.PG_SSL) {
+    throw new ConfigError('Configuración inválida:\n- PG_AUTH=entra necesita PG_SSL=true');
+  }
+  if (config.REDIS_AUTH === 'entra' && !config.REDIS_TLS) {
+    throw new ConfigError('Configuración inválida:\n- REDIS_AUTH=entra necesita REDIS_TLS=true');
   }
   if (config.MATCHMAKING_FILL_AFTER_MS > config.MATCHMAKING_MAX_WAIT_MS) {
     throw new ConfigError(
