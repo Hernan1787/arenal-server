@@ -1,4 +1,4 @@
-import { ArenalApi, chooseCard, isMyTurn, RealtimeSession } from '@arenal/client';
+import { ArenalApi, chooseCard, isMyTurn, RealtimeSession, RejectedError } from '@arenal/client';
 import { viewFor, type PlayerView } from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { useHarness } from './harness.js';
@@ -35,8 +35,17 @@ describe('cliente de Arenal contra el servidor', () => {
       setTimeout(() => {
         const current = socket.view;
         const card = isMyTurn(current) ? chooseCard(current) : undefined;
-        if (card !== undefined) socket.playCard(card.id).catch(() => undefined);
-      }, 5);
+        if (card === undefined) return;
+        socket.playCard(card.id).catch((error: unknown) => {
+          // Si el servidor pide bajar el ritmo, se vuelve a intentar; un STALE_STATE se resuelve solo
+          // con el evento que viene en camino.
+          if (error instanceof RejectedError && error.code === 'RATE_LIMITED' && socket.view !== null) {
+            setTimeout(() => {
+              if (socket.view !== null) play(socket, socket.view);
+            }, 200);
+          }
+        });
+      }, 20);
     };
     for (const api of apis) {
       const socket = await RealtimeSession.open(base, await api.realtimeTicket(), {

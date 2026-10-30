@@ -56,7 +56,14 @@ async function runBot(player: Player): Promise<Stats> {
         },
         (error: unknown) => {
           // STALE_STATE: llegó un evento mientras pensaba; se vuelve a considerar con el nuevo.
-          if (!(error instanceof RejectedError && error.retryable)) console.error(`${player.name}:`, String(error));
+          // RATE_LIMITED: se reintenta un poco después.
+          if (error instanceof RejectedError && error.code === 'RATE_LIMITED') {
+            setTimeout(() => {
+              if (socket.view !== null) consider(socket.view);
+            }, 500);
+          } else if (!(error instanceof RejectedError && error.retryable)) {
+            console.error(`${player.name}:`, String(error));
+          }
         },
       );
     }, thinkMs);

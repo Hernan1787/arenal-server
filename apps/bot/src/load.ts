@@ -63,6 +63,8 @@ interface StageResult {
   readonly latencyMs: { p50: number; p95: number; p99: number; max: number; mean: number };
   readonly lostMoves: number;
   readonly duplicateAcks: number;
+  /** Jugadas que el servidor frenó por el límite de mensajes por conexión (se reintentan). */
+  readonly rateLimited: number;
   readonly sequenceGaps: number;
   readonly invalidMessages: number;
   readonly errors: number;
@@ -129,7 +131,13 @@ class Table {
 
   constructor(
     readonly players: readonly Player[],
-    private readonly stats: { latencies: number[]; errors: number; lost: number; duplicates: number },
+    private readonly stats: {
+      latencies: number[];
+      errors: number;
+      lost: number;
+      duplicates: number;
+      rateLimited: number;
+    },
   ) {}
 
   async open(): Promise<void> {
@@ -239,6 +247,14 @@ class Table {
           },
           (error: unknown) => {
             // STALE_STATE es parte del protocolo (llegó un evento mientras «pensaba»), no un error.
+            // RATE_LIMITED tampoco: el servidor pide bajar el ritmo y se reintenta.
+            if (error instanceof RejectedError && error.code === 'RATE_LIMITED') {
+              this.stats.rateLimited += 1;
+              setTimeout(() => {
+                if (socket.view !== null) this.consider(player, socket.view);
+              }, 500);
+              return;
+            }
             if (error instanceof RejectedError && error.retryable) return;
             if (!this.stopped) this.stats.errors += 1;
           },
@@ -249,7 +265,7 @@ class Table {
 }
 
 async function runStage(matches: number, pool: Player[]): Promise<StageResult> {
-  const stats = { latencies: [] as number[], errors: 0, lost: 0, duplicates: 0 };
+  const stats = { latencies: [] as number[], errors: 0, lost: 0, duplicates: 0, rateLimited: 0 };
   const tables: Table[] = [];
   for (let i = 0; i < matches; i++) {
     tables.push(new Table(pool.slice(i * playersPerMatch, (i + 1) * playersPerMatch), stats));
@@ -297,6 +313,7 @@ async function runStage(matches: number, pool: Player[]): Promise<StageResult> {
     latencyMs,
     lostMoves: stats.lost,
     duplicateAcks: stats.duplicates,
+    rateLimited: stats.rateLimited,
     sequenceGaps: gaps,
     invalidMessages: invalid,
     errors,
@@ -334,7 +351,7 @@ for (const matches of stages) {
     `  ${result.moves} jugadas (${result.movesPerSecond}/s) · p50 ${l.p50} · p95 ${l.p95} · p99 ${l.p99} · máx ${l.max} ms` +
       ` · errores ${result.errors} (${(result.errorRate * 100).toFixed(2)} %) · perdidas ${result.lostMoves}` +
       ` · huecos ${result.sequenceGaps}${result.server ? ` · CPU ${result.server.cpuPercentAvg} % · RSS ${result.server.rssMbMax} MB` : ''}` +
-      `${result.database ? ` · CPU Postgres ${result.database.cpuPercentAvg} %` : ''}` +
+      (result.database ? ` · CPU Postgres ${result.database.cpuPercentAvg} %` : '') +
       ` · ${result.meetsGoals ? 'cumple' : 'NO cumple'}`,
   );
 }

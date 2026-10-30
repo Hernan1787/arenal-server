@@ -10,23 +10,23 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 
 ## Estado
 
-| Parte                                          | Estado                                                                                                                      |
-| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Motor de reglas (`packages/domain`)            | Listo, con pruebas unitarias y de propiedades                                                                               |
-| Contrato en tiempo real (`packages/contracts`) | Mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                                  |
-| Usuarios                                       | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256                                                    |
-| Salas                                          | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica                       |
-| Emparejamiento                                 | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas                                          |
-| Partidas                                       | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición            |
-| API REST                                       | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details                                                                |
-| Tiempo real                                    | WebSocket con ticket de un solo uso, heartbeat, límites por conexión, snapshot al conectar y eventos en orden               |
-| Reloj del servidor                             | Turnos con temporizador y acción por defecto; periodo de gracia y abandono                                                  |
-| Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                               |
-| Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado                 |
-| Infraestructura en Azure (Bicep) y despliegue  | Bicep completo, identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback; falta la suscripción |
-| Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                  |
-| Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`)                                       |
-| Prueba de carga                                | Partidas reales por WebSocket con latencia de punta a punta y punto de quiebre ([docs/load-test.md](docs/load-test.md))     |
+| Parte                                          | Estado                                                                                                                                                                                         |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Motor de reglas (`packages/domain`)            | Listo, con pruebas unitarias y de propiedades                                                                                                                                                  |
+| Contrato en tiempo real (`packages/contracts`) | Mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                                                                                                     |
+| Usuarios                                       | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256                                                                                                                       |
+| Salas                                          | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica                                                                                          |
+| Emparejamiento                                 | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas                                                                                                             |
+| Partidas                                       | Persistencia en Postgres con orden por partida, `expectedSeq`, idempotencia por `moveId`, historial y repetición                                                                               |
+| API REST                                       | OpenAPI 3.1 publicada en `/docs`, errores en Problem Details                                                                                                                                   |
+| Tiempo real                                    | WebSocket con ticket de un solo uso, heartbeat, límites por conexión, snapshot al conectar y eventos en orden                                                                                  |
+| Reloj del servidor                             | Turnos con temporizador y acción por defecto; periodo de gracia y abandono                                                                                                                     |
+| Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                                                                                                  |
+| Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado                                                                                    |
+| Infraestructura en Azure (Bicep) y despliegue  | Bicep completo, identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback; falta la suscripción                                                                    |
+| Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                                                                                     |
+| Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`)                                                                                                          |
+| Prueba de carga                                | Partidas reales por WebSocket. En local cumple p95 < 200 ms hasta 400 partidas simultáneas; la caché de estado subió el punto de quiebre de 300 a 500 ([docs/load-test.md](docs/load-test.md)) |
 
 URL pública en Azure: pendiente (falta activar la suscripción; los pasos están en [docs/deploy.md](docs/deploy.md)).
 
@@ -153,6 +153,7 @@ En [docs/adr](docs/adr):
 7. [Tiempo real entre réplicas: Redis para avisar, Postgres para no perder nada](docs/adr/0007-tiempo-real-entre-replicas.md)
 8. [Administración: acciones por el dominio y auditoría de solo inserción](docs/adr/0008-administracion-y-auditoria.md)
 9. [Despliegue en Azure: Container Apps, identidad administrada y revisiones con tráfico dividido](docs/adr/0009-despliegue-en-azure.md)
+10. [Caché del estado de las partidas en cada réplica](docs/adr/0010-cache-de-estado-por-replica.md)
 
 ## Azure
 

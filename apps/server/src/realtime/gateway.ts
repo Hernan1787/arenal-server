@@ -295,7 +295,8 @@ export class RealtimeGateway {
     if (!session.bucket.take()) {
       session.violations += 1;
       this.metrics.messageRejected('RATE_LIMITED');
-      session.error(null, 'RATE_LIMITED', 'Demasiados mensajes; baja el ritmo', true);
+      // Con el id, el cliente sabe qué mensaje se rechazó y puede reintentarlo.
+      session.error(isBinary ? null : peekId(data), 'RATE_LIMITED', 'Demasiados mensajes; baja el ritmo', true);
       if (session.violations > 20) session.close(4029, 'Demasiados mensajes');
       return;
     }
@@ -556,6 +557,15 @@ function rawToString(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
   if (data instanceof ArrayBuffer) return Buffer.from(data).toString('utf8');
   return data.toString('utf8');
+}
+
+/** El id de un mensaje, si se puede leer; para responder errores aunque el mensaje no se procese. */
+function peekId(data: RawData): string | null {
+  try {
+    return extractId(JSON.parse(rawToString(data)));
+  } catch {
+    return null;
+  }
 }
 
 function extractId(raw: unknown): string | null {

@@ -59,25 +59,29 @@ y la latencia crece porque las jugadas esperan en la cola de Postgres.
 
 ### Después: caché del estado en cada réplica ([ADR 0010](adr/0010-cache-de-estado-por-replica.md))
 
-|      Partidas | Jugadas/s |    p50 |    p95 |    p99 | Errores | Perdidas | CPU servidor | CPU Postgres |    RSS |
-| ------------: | --------: | -----: | -----: | -----: | ------: | -------: | -----------: | -----------: | -----: |
-|            50 |       194 | 3.3 ms | 8.1 ms |  16 ms |       0 |        0 |         18 % |         11 % | 165 MB |
-|           100 |       384 | 3.5 ms |  11 ms |  20 ms |       0 |        0 |         28 % |         35 % | 165 MB |
-|           200 |       746 | 6.2 ms |  23 ms |  43 ms |       0 |        0 |         48 % |         67 % | 193 MB |
-|           300 |       961 |  39 ms |  81 ms | 104 ms |       0 |        0 |         58 % |         86 % | 307 MB |
-|           400 |       990 | 107 ms | 164 ms | 191 ms |       0 |        0 |         58 % |         89 % | 307 MB |
-| QUIEBRE_FILAS |
+| Partidas | Jugadas/s |    p50 |        p95 |    p99 | Errores | Perdidas | CPU servidor | CPU Postgres |    RSS |
+| -------: | --------: | -----: | ---------: | -----: | ------: | -------: | -----------: | -----------: | -----: |
+|       50 |       194 | 3.3 ms |     8.1 ms |  16 ms |       0 |        0 |         18 % |         11 % | 165 MB |
+|      100 |       384 | 3.5 ms |      11 ms |  20 ms |       0 |        0 |         28 % |         35 % | 165 MB |
+|      200 |       746 | 6.2 ms |      23 ms |  43 ms |       0 |        0 |         48 % |         67 % | 193 MB |
+|      300 |       961 |  39 ms |      81 ms | 104 ms |       0 |        0 |         58 % |         86 % | 307 MB |
+|      400 |       990 | 107 ms |     164 ms | 191 ms |       0 |        0 |         58 % |         89 % | 307 MB |
+|  **500** |       917 | 209 ms | **287 ms** | 334 ms |       0 |        0 |         58 % |         86 % | 377 MB |
+|      600 |       906 | 302 ms |     413 ms | 453 ms |       0 |        0 |         58 % |         85 % | 379 MB |
 
-PUNTO_DE_QUIEBRE
+Punto de quiebre: **500 partidas simultáneas** (antes, 300). Con 400 todavía cumple (p95 de 164 ms). El techo
+ahora está en unas 950 jugadas por segundo, con Postgres cerca del 90 % de CPU. El servidor nunca pasa del 60 % de un
+núcleo: el siguiente cuello de botella es la base, no la réplica.
 
 ### La optimización, en números
 
-| Con 300 partidas simultáneas |  Antes | Después | Cambio |
-| ---------------------------- | -----: | ------: | -----: |
-| p95 de punta a punta         | 271 ms |   81 ms |  −70 % |
-| p50                          | 161 ms |   39 ms |  −76 % |
-| Jugadas por segundo          |    625 |     961 |  +54 % |
-| ¿Cumple p95 < 200 ms?        |     No |      Sí |        |
+| Con 300 partidas simultáneas |        Antes |      Después | Cambio |
+| ---------------------------- | -----------: | -----------: | -----: |
+| p95 de punta a punta         |       271 ms |        81 ms |  −70 % |
+| p50                          |       161 ms |        39 ms |  −76 % |
+| Jugadas por segundo          |          625 |          961 |  +54 % |
+| ¿Cumple p95 < 200 ms?        |           No |           Sí |        |
+| Punto de quiebre             | 300 partidas | 500 partidas |  +67 % |
 
 Con 200 partidas, el p95 baja de 107 a 23 ms (−78 %).
 
