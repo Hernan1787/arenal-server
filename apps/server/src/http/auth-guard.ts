@@ -40,6 +40,22 @@ export function requireAuth(tokens: TokenIssuer, auth: Pick<AuthService, 'accoun
   };
 }
 
+/**
+ * Exige un usuario autenticado con rol de administrador. El rol se lee de la base en cada
+ * solicitud (no del JWT): quitarle el rol a alguien aplica de inmediato.
+ */
+export function requireAdmin(tokens: TokenIssuer, auth: Pick<AuthService, 'accountStatus'>) {
+  const authenticate = requireAuth(tokens, auth);
+  return async (request: FastifyRequest): Promise<void> => {
+    await authenticate(request);
+    if (request.authUser?.role !== 'admin') {
+      request.log.warn({ userId: request.authUser?.id }, 'intento de usar administración sin el rol');
+      throw new AppError('forbidden', 'Solo un administrador puede usar esta función', 'ADMIN_ONLY');
+    }
+    request.log.info({ adminId: request.authUser.id, route: request.routeOptions.url }, 'acceso de administración');
+  };
+}
+
 /** El usuario autenticado; solo se usa en rutas protegidas por `requireAuth`. */
 export function currentUser(request: FastifyRequest): AuthUser {
   if (request.authUser === null) throw unauthorized();

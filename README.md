@@ -13,7 +13,7 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Parte                                          | Estado                                                                                                           |
 | ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | Motor de reglas (`packages/domain`)            | Listo, con pruebas unitarias y de propiedades                                                                    |
-| Contrato en tiempo real (`packages/contracts`) | v0: mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                   |
+| Contrato en tiempo real (`packages/contracts`) | Mensajes, errores y códigos de cierre; genera AsyncAPI 3.0                                                       |
 | Usuarios                                       | Registro, login, refresh rotativo, logout y perfil; Argon2id y JWT ES256                                         |
 | Salas                                          | Públicas y privadas (código), listar, unirse, salir, «listo» con inicio automático; capacidad atómica            |
 | Emparejamiento                                 | Cola rápida con relleno y tiempo máximo configurables; nadie queda en dos partidas                               |
@@ -22,7 +22,7 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Tiempo real                                    | WebSocket con ticket de un solo uso, heartbeat, límites por conexión, snapshot al conectar y eventos en orden    |
 | Reloj del servidor                             | Turnos con temporizador y acción por defecto; periodo de gracia y abandono                                       |
 | Varias réplicas                                | Eventos repartidos por Redis pub/sub, huecos rellenados desde Postgres, cierre 1012 al apagar                    |
-| Administración                                 | Pendiente                                                                                                        |
+| Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado      |
 | Infraestructura en Azure (Bicep) y despliegue  | Pendiente                                                                                                        |
 | Prueba de carga                                | Pendiente                                                                                                        |
 
@@ -64,6 +64,23 @@ pnpm dev               # servidor con recarga en http://localhost:8080
 `pnpm install` activa un hook de pre-commit que corre [gitleaks](https://github.com/gitleaks/gitleaks) si está
 instalado. El CI lo corre siempre.
 
+## Administración
+
+Las rutas `/v1/admin/*` son solo para el rol administrador (ver `/docs`). Nadie puede darse ese rol por la API:
+se da desde la línea de comandos, y queda en la auditoría.
+
+```bash
+# con docker compose
+docker compose exec server node dist/cli/admin.js grant tu@correo.com --reason "Primer administrador"
+# en desarrollo
+pnpm --filter @arenal/server admin grant tu@correo.com --reason "Primer administrador"
+```
+
+`revoke` quita el rol. El rol se revisa en la base en cada solicitud, así que el cambio aplica de inmediato. Cada
+acción (terminar una partida, suspender, reactivar, dar o quitar el rol) escribe una fila en `admin_audit` dentro de
+la misma transacción; la tabla rechaza cambios y borrados. Detalle en el
+[ADR 0008](docs/adr/0008-administracion-y-auditoria.md).
+
 ## Estructura
 
 ```
@@ -74,6 +91,8 @@ apps/server
   src/lobby          salas y cola de emparejamiento
   src/matches        persistencia de partidas: orden, idempotencia, historial y repetición
   src/realtime       WebSocket, tickets, presencia, reparto entre réplicas y reloj del servidor
+  src/admin          funciones del administrador y auditoría
+  src/cli            línea de comandos de operación (dar o quitar el rol de administrador)
   src/http           rutas, esquemas de la API, guardia de autenticación, Problem Details
   src/db             migraciones y transacciones
   test/integration   pruebas contra Postgres real
@@ -106,3 +125,4 @@ En [docs/adr](docs/adr):
 5. [Salas y cola de emparejamiento en Postgres](docs/adr/0005-salas-y-cola-en-postgres.md)
 6. [Autenticación propia con JWT ES256 y refresh rotativo](docs/adr/0006-autenticacion-propia.md)
 7. [Tiempo real entre réplicas: Redis para avisar, Postgres para no perder nada](docs/adr/0007-tiempo-real-entre-replicas.md)
+8. [Administración: acciones por el dominio y auditoría de solo inserción](docs/adr/0008-administracion-y-auditoria.md)

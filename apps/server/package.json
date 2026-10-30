@@ -1,6 +1,6 @@
 {
   "name": "@arenal/server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Servidor de Arenal: API REST, WebSocket y adaptadores de Postgres y Redis.",
   "type": "module",
@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "tsx watch --conditions=development src/main.ts",
     "start": "node dist/main.js",
-    "openapi": "tsx --conditions=development scripts/generate-openapi.ts"
+    "openapi": "tsx --conditions=development scripts/generate-openapi.ts",
+    "admin": "tsx --conditions=development src/cli/admin.ts"
   },
   "dependencies": {
     "@arenal/contracts": "workspace:*",

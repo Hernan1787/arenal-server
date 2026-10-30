@@ -23,7 +23,9 @@ export type MatchStatus = 'waiting' | 'playing' | 'finished';
 
 export type MatchResult =
   | { readonly kind: 'winner'; readonly winner: PlayerId; readonly reason: 'last_standing' | 'most_lives' }
-  | { readonly kind: 'draw'; readonly players: readonly PlayerId[]; readonly reason: 'tied_lives' | 'no_players' };
+  | { readonly kind: 'draw'; readonly players: readonly PlayerId[]; readonly reason: 'tied_lives' | 'no_players' }
+  /** La partida la terminó un administrador: no hay ganador. */
+  | { readonly kind: 'aborted'; readonly reason: 'admin' };
 
 /**
  * Estado completo de una partida. Contiene información secreta (manos, mazo y límite):

@@ -25,6 +25,8 @@ export function decide(state: GameState, intent: Intent, ctx: DecideContext): Re
       return turnTimeout(state, intent.playerId, intent.turn, ctx);
     case 'abandon':
       return abandon(state, intent.playerId);
+    case 'terminate':
+      return terminate(state);
   }
 }
 
@@ -153,6 +155,13 @@ function abandon(state: GameState, playerId: PlayerId): Result<DomainEvent[]> {
     if (next !== null) rec.emit({ type: 'TurnStarted', playerId: next, turn: rec.state.turn + 1 });
   }
   return ok(rec.events);
+}
+
+/** Un administrador termina la partida: se cierra sin ganador y la mano de nadie se revela. */
+function terminate(state: GameState): Result<DomainEvent[]> {
+  if (state.status === 'waiting') return fail('MATCH_NOT_STARTED', 'La partida no ha empezado');
+  if (state.status === 'finished') return fail('MATCH_FINISHED', 'La partida ya terminó');
+  return ok([{ type: 'MatchEnded', result: { kind: 'aborted', reason: 'admin' } }]);
 }
 
 function pressureAfterPlaying(pressure: number, card: Card, coolAmount: number): number {

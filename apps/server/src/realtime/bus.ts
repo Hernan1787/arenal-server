@@ -17,11 +17,14 @@ export interface EventBus {
   matchEvents(matchId: string, events: readonly SequencedEvent[]): Promise<void>;
   /** Se creó una partida con estos jugadores (sala que arrancó o cola). */
   matchAssigned(matchId: string, playerIds: readonly string[]): Promise<void>;
+  /** Se suspendió la cuenta: cada réplica cierra las conexiones que tenga de ese usuario. */
+  userSuspended(userId: string): Promise<void>;
 }
 
 export const noopBus: EventBus = {
   matchEvents: () => Promise.resolve(),
   matchAssigned: () => Promise.resolve(),
+  userSuspended: () => Promise.resolve(),
 };
 
 export const matchChannel = (matchId: string): string => `arenal:match:${matchId}`;
@@ -32,9 +35,8 @@ export interface MatchEventsMessage {
   readonly events: readonly SequencedEvent[];
 }
 
-export interface MatchAssignedMessage {
-  readonly matchId: string;
-}
+/** Avisos por el canal de cada usuario. */
+export type UserMessage = { readonly type: 'assigned'; readonly matchId: string } | { readonly type: 'suspended' };
 
 /** Bus sobre Redis pub/sub. Los eventos viajan completos: Redis es interno, nunca llega a un jugador. */
 export class RedisEventBus implements EventBus {
@@ -50,8 +52,13 @@ export class RedisEventBus implements EventBus {
   }
 
   async matchAssigned(matchId: string, playerIds: readonly string[]): Promise<void> {
-    const message: MatchAssignedMessage = { matchId };
+    const message: UserMessage = { type: 'assigned', matchId };
     await Promise.all(playerIds.map((id) => this.publish(userChannel(id), message)));
+  }
+
+  async userSuspended(userId: string): Promise<void> {
+    const message: UserMessage = { type: 'suspended' };
+    await this.publish(userChannel(userId), message);
   }
 
   private async publish(channel: string, message: object): Promise<void> {

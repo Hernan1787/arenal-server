@@ -20,16 +20,21 @@ ni repite los valores que mandó el cliente.
 
 Cuando un mismo estado HTTP puede tener varias causas, el problema trae un `code` estable:
 
-| `code`              | Estado | Significado                                                   |
-| ------------------- | ------ | ------------------------------------------------------------- |
-| `EMAIL_TAKEN`       | 409    | Ya existe una cuenta con ese correo.                          |
-| `ACCOUNT_SUSPENDED` | 403    | La cuenta está suspendida.                                    |
-| `ALREADY_IN_ROOM`   | 409    | El usuario ya está en una sala.                               |
-| `ALREADY_QUEUED`    | 409    | El usuario ya está en la cola de emparejamiento.              |
-| `ALREADY_IN_MATCH`  | 409    | El usuario ya está jugando una partida.                       |
-| `ROOM_FULL`         | 409    | La sala llegó a su capacidad.                                 |
-| `ROOM_NOT_OPEN`     | 409    | La sala ya arrancó o se cerró.                                |
-| `MATCH_IN_PROGRESS` | 409    | La repetición solo está disponible cuando la partida termina. |
+| `code`                | Estado | Significado                                                   |
+| --------------------- | ------ | ------------------------------------------------------------- |
+| `EMAIL_TAKEN`         | 409    | Ya existe una cuenta con ese correo.                          |
+| `ACCOUNT_SUSPENDED`   | 403    | La cuenta está suspendida.                                    |
+| `ALREADY_IN_ROOM`     | 409    | El usuario ya está en una sala.                               |
+| `ALREADY_QUEUED`      | 409    | El usuario ya está en la cola de emparejamiento.              |
+| `ALREADY_IN_MATCH`    | 409    | El usuario ya está jugando una partida.                       |
+| `ROOM_FULL`           | 409    | La sala llegó a su capacidad.                                 |
+| `ROOM_NOT_OPEN`       | 409    | La sala ya arrancó o se cerró.                                |
+| `MATCH_IN_PROGRESS`   | 409    | La repetición solo está disponible cuando la partida termina. |
+| `ADMIN_ONLY`          | 403    | La ruta es solo para el rol administrador.                    |
+| `MATCH_FINISHED`      | 409    | Administración: la partida ya terminó.                        |
+| `CANNOT_SUSPEND_SELF` | 409    | Administración: nadie puede suspender su propia cuenta.       |
+| `ALREADY_SUSPENDED`   | 409    | Administración: la cuenta ya está suspendida.                 |
+| `NOT_SUSPENDED`       | 409    | Administración: la cuenta no está suspendida.                 |
 
 Ejemplo:
 

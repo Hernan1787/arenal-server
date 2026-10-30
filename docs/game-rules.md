@@ -43,6 +43,8 @@ Las cartas jugadas son públicas. Si el mazo se acaba, el servidor baraja el des
 
 - Gana el último jugador que quede en pie.
 - Si se cierra la ronda 15, gana quien tenga más vidas; si varios empatan con el máximo, es empate entre ellos.
+- Un administrador puede terminar una partida en curso: se cierra sin ganador (resultado `aborted`) y ninguna mano
+  se revela.
 
 ## Temporizador y abandono
 

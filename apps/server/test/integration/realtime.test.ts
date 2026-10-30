@@ -178,7 +178,9 @@ describe('estado y eventos', () => {
       const rivalHand = loaded?.state.players.find((p) => p.id === rival)?.hand.map((c) => c.id) ?? [];
       const everything = JSON.stringify(socket.received);
       for (const id of rivalHand) expect(everything).not.toContain(id);
-      expect(everything).not.toMatch(/"limit":/);
+      // El límite solo se revela al terminar la ronda (evento Eruption); antes no viaja en ningún mensaje.
+      const beforeReveal = socket.received.filter((m) => m.type !== 'event' || m.event.type !== 'Eruption');
+      expect(JSON.stringify(beforeReveal)).not.toMatch(/"limit":/);
     }
     await Promise.all([sa.close(), sb.close()]);
   });

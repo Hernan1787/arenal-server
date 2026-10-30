@@ -131,6 +131,7 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
           { name: 'Tiempo real' },
           { name: 'Partidas' },
           { name: 'Historial' },
+          { name: 'Administración', description: 'Solo para el rol administrador; cada acción queda auditada.' },
         ],
         components: {
           securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
