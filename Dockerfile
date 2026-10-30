@@ -17,9 +17,11 @@ COPY tsconfig.base.json ./
 COPY packages/domain packages/domain
 COPY packages/contracts packages/contracts
 COPY apps/server apps/server
+# --filter-prod: compila el servidor y sus dependencias de producción, no las de desarrollo
+# (el cliente de pruebas no entra a la imagen).
 # --ignore-scripts: la imagen no ejecuta scripts de instalación (ni los del repo, como
 # `prepare`, que necesita archivos que no entran al contexto de Docker).
-RUN pnpm --filter "@arenal/server..." build \
+RUN pnpm --filter-prod "@arenal/server..." build \
  && pnpm --filter @arenal/server deploy --prod --legacy --ignore-scripts /out
 
 # --- Imagen final -------------------------------------------------------------------------
