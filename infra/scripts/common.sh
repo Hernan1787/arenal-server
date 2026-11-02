@@ -16,7 +16,9 @@ log() { printf '\n==> %s\n' "$*"; }
 refresh_login() {
   [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && -n "${AZURE_CLIENT_ID:-}" ]] || return 0
   local token
-  token="$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+  # GitHub a veces responde 503 un momento: se reintenta.
+  token="$(curl -sSf --retry 6 --retry-all-errors --retry-delay 5 \
+    -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
     "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)"
   echo "::add-mask::$token"
   az login --service-principal -u "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" \
