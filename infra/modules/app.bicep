@@ -1,7 +1,8 @@
-// El servidor en Container Apps. Cada despliegue crea una revisión nueva (`<app>--<sufijo>`):
-// si ya hay una revisión estable, la nueva entra con 0 % del tráfico y la etiqueta `next`; el
-// pipeline la prueba por su URL propia y recién entonces le pasa el tráfico. La revisión vieja
-// queda marcada como `previous`: un rollback es reactivarla y devolverle el tráfico
+// El servidor en Container Apps. El ambiente es Express (ADR 0011): una sola revisión activa a la
+// vez. Cada despliegue crea una revisión nueva (cambia la imagen o APP_VERSION); Container Apps la
+// arranca, espera a que pase la sonda de disponibilidad, le pasa el tráfico y apaga la anterior.
+// Al apagarse, cada réplica vieja cierra sus WebSocket con 1012 y los clientes reconectan a la
+// nueva. La imagen anterior queda anotada en una etiqueta del recurso para el rollback
 // (infra/scripts/rollback.sh).
 
 param environmentName string
@@ -11,14 +12,11 @@ param tags object = {}
 @description('Imagen completa, por ejemplo acrarenaldev123.azurecr.io/arenal-server:<sha>')
 param image string
 
-@description('Sufijo de la revisión (por ejemplo el SHA corto del commit)')
-param revisionSuffix string
+@description('Imagen que estaba antes de este despliegue (vacío la primera vez); se guarda para el rollback')
+param previousImage string = ''
 
-@description('Sufijo de la revisión que hoy recibe el tráfico. Vacío en el primer despliegue.')
-param stableRevisionSuffix string = ''
-
-@description('Sufijo de la revisión anterior, marcada como `previous` para el rollback')
-param previousRevisionSuffix string = ''
+@description('Versión que muestra /health/live; distinta en cada despliegue')
+param appVersion string
 
 param identityId string
 param identityName string
@@ -43,58 +41,31 @@ param maxReplicas int
 
 var appName = 'ca-arenal-${environmentName}'
 var publicUrl = 'https://${appName}.${containerEnvDomain}'
-var newRevision = '${appName}--${revisionSuffix}'
-// Directo: primer despliegue, o la promoción (la revisión nueva ya pasó la prueba de humo).
-var direct = empty(stableRevisionSuffix) || stableRevisionSuffix == revisionSuffix
-var keepPrevious = !empty(previousRevisionSuffix) && previousRevisionSuffix != revisionSuffix && previousRevisionSuffix != stableRevisionSuffix
-
-var mainTraffic = direct
-  ? [{ revisionName: newRevision, weight: 100, label: 'stable' }]
-  : [
-      { revisionName: '${appName}--${stableRevisionSuffix}', weight: 100, label: 'stable' }
-      { revisionName: newRevision, weight: 0, label: 'next' }
-    ]
-var traffic = concat(
-  mainTraffic,
-  keepPrevious ? [{ revisionName: '${appName}--${previousRevisionSuffix}', weight: 0, label: 'previous' }] : []
-)
 
 resource app 'Microsoft.App/containerApps@2025-07-01' = {
   name: appName
   location: location
-  tags: tags
+  tags: union(tags, { imagen: image, imagenAnterior: previousImage })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identityId}': {} }
   }
   properties: {
     environmentId: containerEnvId
-    workloadProfileName: 'Consumption'
     configuration: {
-      activeRevisionsMode: 'Multiple'
-      maxInactiveRevisions: 5
+      activeRevisionsMode: 'Single'
       ingress: {
         external: true
         targetPort: 8080
-        transport: 'auto'
+        transport: 'http'
         allowInsecure: false
-        traffic: traffic
       }
       registries: [{ server: registryServer, identity: identityId }]
-      // Referencia a Key Vault leída con la identidad: el valor nunca aparece en la plantilla.
-      secrets: [
-        {
-          name: 'jwt-private-key'
-          keyVaultUrl: '${vaultUri}secrets/jwt-private-key'
-          identity: identityId
-        }
-      ]
     }
     template: {
-      revisionSuffix: revisionSuffix
-      // El servidor drena en 25 s (SHUTDOWN_GRACE_MS): cierra los WebSocket con 1012 y los
-      // clientes reconectan a otra réplica.
-      terminationGracePeriodSeconds: 30
+      // Express no deja cambiar el plazo de apagado; el de Container Apps es de 30 s y el servidor
+      // drena en 25 (SHUTDOWN_GRACE_MS): cierra los WebSocket con 1012 y los clientes reconectan a la
+      // revisión nueva.
       containers: [
         {
           name: 'server'
@@ -103,7 +74,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
           env: [
             { name: 'NODE_ENV', value: 'production' }
             { name: 'PORT', value: '8080' }
-            { name: 'APP_VERSION', value: revisionSuffix }
+            { name: 'APP_VERSION', value: appVersion }
             // Barrido cada 2 s: suficiente para turnos de 30 s y deja que las réplicas sin jugadores
             // se cobren a la tarifa reducida de inactividad.
             { name: 'SWEEP_INTERVAL_MS', value: '2000' }
@@ -119,7 +90,8 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
             { name: 'REDIS_PORT', value: '10000' }
             { name: 'REDIS_TLS', value: 'true' }
             { name: 'REDIS_AUTH', value: 'entra' }
-            { name: 'JWT_PRIVATE_KEY', secretRef: 'jwt-private-key' }
+            // Solo la URL: la app lee la llave de Key Vault al arrancar, con su identidad.
+            { name: 'JWT_PRIVATE_KEY_SECRET_URI', value: '${vaultUri}secrets/jwt-private-key' }
             // Con la ingesta local desactivada, esta cadena no sirve sin un token de Entra ID.
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
           ]
@@ -220,6 +192,4 @@ resource restarts 'Microsoft.Insights/metricAlerts@2018-03-01' = {
 
 output appName string = app.name
 output url string = publicUrl
-output newRevision string = newRevision
-@description('URL de la revisión nueva mientras no recibe tráfico (igual a url si fue directo)')
-output nextUrl string = direct ? publicUrl : 'https://${appName}---next.${containerEnvDomain}'
+output latestRevision string = app.properties.latestRevisionName

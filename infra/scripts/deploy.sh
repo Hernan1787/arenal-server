@@ -3,10 +3,11 @@
 #   1. base (grupo de recursos, identidad, registro, Key Vault, Postgres, Redis, observabilidad)
 #   2. secreto de JWT en Key Vault, si falta (se genera aquí y nunca pasa por el repo)
 #   3. imagen en el registro (dev la construye; prod importa la misma que se probó en dev)
-#   4. revisión nueva con 0 % del tráfico
-#   5. prueba de humo contra la revisión nueva
-#   6. promoción: la revisión nueva recibe el tráfico; la anterior se apaga (drena sus WebSocket)
-#      y queda marcada como `previous` para el rollback
+#   4. revisión nueva: Container Apps la arranca, le pasa el tráfico cuando está sana y apaga la
+#      anterior, que drena sus WebSocket (los clientes reconectan). El ambiente es Express: una
+#      sola revisión activa, sin tráfico dividido (ADR 0011)
+#   5. prueba de humo contra la URL pública, esperando a que responda la versión nueva. Si falla,
+#      se vuelve a la imagen anterior (rollback automático)
 #
 # Uso: infra/scripts/deploy.sh <dev|prod>
 # Necesita: az con sesión iniciada, docker (solo dev), node 24, y las variables
@@ -23,21 +24,21 @@ source "$(dirname "$0")/common.sh"
 
 SHA="${GITHUB_SHA:-$(git rev-parse HEAD)}"
 TAG="${SHA:0:12}"
-# El sufijo de una revisión debe empezar con letra; el número de corrida evita choques al
-# volver a desplegar el mismo commit.
-SUFFIX="c${SHA:0:7}-${GITHUB_RUN_NUMBER:-$(date +%s)}"
+# Versión que muestra /health/live: el commit y el número de corrida (cambia en cada despliegue,
+# así que siempre hay revisión nueva aunque se vuelva a desplegar el mismo commit).
+VERSION="c${SHA:0:7}-${GITHUB_RUN_NUMBER:-$(date +%s)}"
 RG="rg-arenal-$ENV_NAME"
 APP="ca-arenal-$ENV_NAME"
 
 deploy() {
   az deployment sub create \
-    --name "arenal-$ENV_NAME-$1-$SUFFIX" \
+    --name "arenal-$ENV_NAME-$1-$VERSION" \
     --location "$AZURE_LOCATION" \
     --parameters "$INFRA_DIR/$ENV_NAME.bicepparam" \
     --query properties.outputs -o json --only-show-errors
 }
 
-log "1/6 Base del ambiente $ENV_NAME"
+log "1/5 Base del ambiente $ENV_NAME"
 if [[ "$(az group exists -n "$RG")" == false ]]; then
   echo "   el ambiente no existe: se crea desde cero"
   # Un Key Vault borrado queda retenido unos días con su nombre; se purga para poder recrearlo.
@@ -49,7 +50,8 @@ ACR="$(jq -r .registryName.value <<<"$base")"
 REGISTRY="$(jq -r .registryServer.value <<<"$base")"
 VAULT="$(jq -r .vaultName.value <<<"$base")"
 
-log "2/6 Secreto de firma de los JWT"
+log "2/5 Secreto de firma de los JWT"
+refresh_login
 secret_exists() { az keyvault secret show --vault-name "$VAULT" --name jwt-private-key --query id -o tsv >/dev/null 2>&1; }
 create_secret() {
   local key_file
@@ -68,7 +70,8 @@ else
   echo "   creado"
 fi
 
-log "3/6 Imagen arenal-server:$TAG"
+log "3/5 Imagen arenal-server:$TAG"
+refresh_login
 if az acr repository show --name "$ACR" --image "arenal-server:$TAG" --only-show-errors >/dev/null 2>&1; then
   echo "   ya está en $ACR"
 elif [[ "$ENV_NAME" == prod ]]; then
@@ -83,47 +86,26 @@ else
   docker push "$REGISTRY/arenal-server:$TAG"
 fi
 
-log "4/6 Revisión nueva $APP--$SUFFIX"
-STABLE="$(current_revision "$RG" "$APP")"
-PREVIOUS="$(previous_revision "$RG" "$APP")"
-# La anterior solo se conserva en el tráfico si sigue activa.
-if [[ -n "$PREVIOUS" && "$(revision_active "$RG" "$APP" "$PREVIOUS")" != true ]]; then PREVIOUS=""; fi
-export DEPLOY_APP=true IMAGE_TAG="$TAG" REVISION_SUFFIX="$SUFFIX"
-export STABLE_REVISION_SUFFIX="${STABLE#"$APP--"}" PREVIOUS_REVISION_SUFFIX="${PREVIOUS#"$APP--"}"
-echo "   tráfico actual: ${STABLE:-ninguna}; anterior: ${PREVIOUS:-ninguna}"
+log "4/5 Revisión nueva de $APP ($VERSION)"
+refresh_login
+PREVIOUS_TAG="$(app_image_tag "$RG" "$APP")"
+echo "   imagen actual: ${PREVIOUS_TAG:-ninguna (primer despliegue)}"
+export DEPLOY_APP=true IMAGE_TAG="$TAG" APP_VERSION="$VERSION" PREVIOUS_IMAGE_TAG="$PREVIOUS_TAG"
 app="$(deploy app)"
-NEXT_URL="$(jq -r .nextUrl.value <<<"$app")"
 URL="$(jq -r .url.value <<<"$app")"
-NEW="$(jq -r .newRevision.value <<<"$app")"
+REVISION="$(jq -r .latestRevision.value <<<"$app")"
 
-log "5/6 Prueba de humo en $NEXT_URL"
-if ! node "$INFRA_DIR/scripts/smoke.mjs" "$NEXT_URL"; then
-  echo "La revisión nueva no pasó la prueba: queda sin tráfico y se desactiva" >&2
-  if [[ -n "$STABLE" ]]; then
-    az containerapp revision deactivate -g "$RG" -n "$APP" --revision "$NEW" --only-show-errors || true
+log "5/5 Prueba de humo en $URL"
+if ! node "$INFRA_DIR/scripts/smoke.mjs" "$URL" "$VERSION"; then
+  if [[ -n "$PREVIOUS_TAG" && "$PREVIOUS_TAG" != "$TAG" ]]; then
+    echo "La versión nueva no pasó la prueba: se vuelve a la imagen $PREVIOUS_TAG" >&2
+    "$INFRA_DIR/scripts/rollback.sh" "$ENV_NAME" "$PREVIOUS_TAG" || true
   fi
   exit 1
 fi
 
-log "6/6 Tráfico a la revisión nueva"
-if [[ -n "$STABLE" && "$STABLE" != "$NEW" ]]; then
-  export STABLE_REVISION_SUFFIX="$SUFFIX" PREVIOUS_REVISION_SUFFIX="${STABLE#"$APP--"}"
-  deploy promote >/dev/null
-  # Las conexiones nuevas ya van a la revisión nueva. Después de un rato se apagan las viejas:
-  # el servidor cierra sus WebSocket con 1012 y los clientes reconectan a la nueva sin perder
-  # la partida (el estado está en Postgres). La anterior queda marcada para el rollback.
-  echo "   esperando ${DRAIN_SECONDS:-60} s antes de apagar las revisiones viejas"
-  sleep "${DRAIN_SECONDS:-60}"
-  mapfile -t old < <(az containerapp revision list -g "$RG" -n "$APP" \
-    --query "[?properties.active && name!='$NEW'].name" -o tsv)
-  for revision in "${old[@]}"; do
-    echo "   desactivando $revision"
-    az containerapp revision deactivate -g "$RG" -n "$APP" --revision "$revision" --only-show-errors
-  done
-fi
-
 echo
-echo "Listo: $URL ($NEW)"
+echo "Listo: $URL ($REVISION, imagen $TAG)"
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
-  { echo "url=$URL"; echo "revision=$NEW"; } >>"$GITHUB_OUTPUT"
+  { echo "url=$URL"; echo "revision=$REVISION"; } >>"$GITHUB_OUTPUT"
 fi

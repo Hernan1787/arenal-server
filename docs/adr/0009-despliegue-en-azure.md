@@ -2,8 +2,9 @@
 
 - Estado: aceptada
 - Fecha: 29 de octubre de 2026
-- Modificada por: [0011](0011-limites-de-azure-for-students.md) (ambiente de Container Apps compartido e identidad
-  administrada para el pipeline)
+- Modificada por: [0011](0011-limites-de-azure-for-students.md): ambiente de Container Apps compartido, identidad
+  administrada para el pipeline y, por el modo Express, una sola revisión activa (sin tráfico dividido) y la llave
+  de los JWT leída por la app
 
 ## Contexto
 

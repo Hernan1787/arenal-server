@@ -1,9 +1,12 @@
 // Prueba de humo contra una URL desplegada. Recorre el camino completo con las dependencias
 // reales: Postgres (registro), Key Vault (firma del JWT), Redis (ticket) y el WebSocket.
-// Uso: node infra/scripts/smoke.mjs https://ca-arenal-dev.<dominio>
+// Uso: node infra/scripts/smoke.mjs https://ca-arenal-dev.<dominio> [versión-esperada]
+// Con una versión, primero espera a que /health/live la muestre: durante un despliegue la
+// revisión vieja sigue respondiendo hasta que la nueva está sana.
 import { randomUUID } from 'node:crypto';
 
 const base = process.argv[2]?.replace(/\/$/, '');
+const expectedVersion = process.argv[3];
 if (!base?.startsWith('https://') && !base?.startsWith('http://')) {
   console.error('Uso: node smoke.mjs <url>');
   process.exit(2);
@@ -33,6 +36,24 @@ async function json(path, init) {
 }
 
 console.log(`Prueba de humo: ${base}`);
+
+if (expectedVersion !== undefined) {
+  await step(`versión ${expectedVersion} en /health/live`, async () => {
+    const deadline = Date.now() + 300_000;
+    let last = 'sin respuesta';
+    while (Date.now() < deadline) {
+      try {
+        const { status, body } = await json('/health/live');
+        if (status === 200 && body?.version === expectedVersion) return `réplica ${body.replica ?? '?'}`;
+        last = `${status} ${JSON.stringify(body)}`;
+      } catch (error) {
+        last = error instanceof Error ? error.message : String(error);
+      }
+      await sleep(5_000);
+    }
+    throw new Error(`la versión nueva no llegó a responder: ${last}`);
+  });
+}
 
 // Una revisión recién creada tarda en arrancar y migrar: se espera hasta 3 minutos.
 await step('/health/ready', async () => {

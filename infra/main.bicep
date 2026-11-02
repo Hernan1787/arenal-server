@@ -2,7 +2,8 @@
 //   1. deployApp=false crea el grupo de recursos y la base (registro, Key Vault, datos…), y si
 //      falta, lo compartido (rg-arenal-shared: el ambiente de Container Apps y Log Analytics).
 //   2. El pipeline genera el secreto de JWT si falta y sube la imagen.
-//   3. deployApp=true crea o actualiza la app en Container Apps con la imagen nueva.
+//   3. deployApp=true crea o actualiza la app en Container Apps con la imagen nueva (una revisión
+//      nueva que reemplaza a la anterior cuando está sana).
 // Ver docs/deploy.md.
 targetScope = 'subscription'
 
@@ -34,9 +35,11 @@ param deployApp bool = false
 @description('Etiqueta de la imagen en el registro (el SHA del commit)')
 param imageTag string = ''
 
-param revisionSuffix string = ''
-param stableRevisionSuffix string = ''
-param previousRevisionSuffix string = ''
+@description('Imagen anterior (vacía la primera vez), para el rollback')
+param previousImageTag string = ''
+
+@description('Versión que muestra /health/live; distinta en cada despliegue')
+param appVersion string = ''
 param allowedOrigins string = ''
 param minReplicas int = 0
 param maxReplicas int = 3
@@ -97,9 +100,8 @@ module app 'modules/app.bicep' = if (deployApp) {
     location: location
     tags: tags
     image: '${base.outputs.registryServer}/arenal-server:${imageTag}'
-    revisionSuffix: revisionSuffix
-    stableRevisionSuffix: stableRevisionSuffix
-    previousRevisionSuffix: previousRevisionSuffix
+    previousImage: empty(previousImageTag) ? '' : '${base.outputs.registryServer}/arenal-server:${previousImageTag}'
+    appVersion: empty(appVersion) ? imageTag : appVersion
     identityId: base.outputs.identityId
     identityName: base.outputs.identityName
     identityClientId: base.outputs.identityClientId
@@ -123,5 +125,4 @@ output registryServer string = base.outputs.registryServer
 output vaultName string = base.outputs.vaultName
 output appName string = deployApp ? app!.outputs.appName : ''
 output url string = deployApp ? app!.outputs.url : ''
-output nextUrl string = deployApp ? app!.outputs.nextUrl : ''
-output newRevision string = deployApp ? app!.outputs.newRevision : ''
+output latestRevision string = deployApp ? app!.outputs.latestRevision : ''

@@ -19,25 +19,21 @@ resource logs 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
   }
 }
 
-// Los logs van a Log Analytics por una configuración de diagnóstico, sin la llave del workspace.
+// Las suscripciones de estudiante crean el ambiente en modo Express (ADR 0011): sin perfiles de
+// carga, sin configuraciones de diagnóstico y con los logs enviados a Log Analytics con la llave
+// del workspace, que la plantilla lee al desplegar (no queda escrita en ningún lado).
 resource containerEnv 'Microsoft.App/managedEnvironments@2025-07-01' = {
   name: 'cae-arenal'
   location: location
   tags: tags
   properties: {
-    appLogsConfiguration: { destination: 'azure-monitor' }
-    workloadProfiles: [{ name: 'Consumption', workloadProfileType: 'Consumption' }]
-    zoneRedundant: false
-  }
-}
-
-resource containerEnvLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  scope: containerEnv
-  name: 'logs'
-  properties: {
-    workspaceId: logs.id
-    logs: [{ categoryGroup: 'allLogs', enabled: true }]
-    metrics: [{ category: 'AllMetrics', enabled: true }]
+    appLogsConfiguration: {
+      destination: 'log-analytics'
+      logAnalyticsConfiguration: {
+        customerId: logs.properties.customerId
+        sharedKey: logs.listKeys().primarySharedKey
+      }
+    }
   }
 }
 

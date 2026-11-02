@@ -158,3 +158,13 @@ describe('cuerpos JSON', () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe('nombre de la réplica', () => {
+  it('usa el nombre que da Container Apps, o el hostname con un sufijo cuando todas comparten hostname', async () => {
+    const { replicaIdFrom } = await import('../src/replica-id.js');
+    expect(replicaIdFrom({ REPLICA_ID: 'fija' })).toBe('fija');
+    expect(replicaIdFrom({ CONTAINER_APP_REPLICA_NAME: 'ca-arenal-prod--abc-7f9' })).toBe('ca-arenal-prod--abc-7f9');
+    expect(replicaIdFrom({}, 'a1b2c3')).toMatch(/-a1b2c3$/);
+    expect(replicaIdFrom({})).not.toBe(replicaIdFrom({}));
+  });
+});

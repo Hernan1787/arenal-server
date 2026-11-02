@@ -63,7 +63,7 @@ let partida = "<matchId>";
 union
   (AppRequests | where Properties["arenal.match.id"] == partida | project TimeGenerated, Tipo = "solicitud", Nombre = Name, OperationId),
   (AppDependencies | where Properties["arenal.match.id"] == partida | project TimeGenerated, Tipo = "intención", Nombre = strcat(Name, " ", tostring(Properties["arenal.intent"]), " → ", tostring(Properties["arenal.outcome"])), OperationId),
-  (ContainerAppConsoleLogs | extend l = parse_json(Log) | where l.matchId == partida | project TimeGenerated, Tipo = "log", Nombre = tostring(l.msg), OperationId = tostring(l.trace_id))
+  (ContainerAppConsoleLogs_CL | extend l = parse_json(Log_s) | where l.matchId == partida | project TimeGenerated, Tipo = "log", Nombre = tostring(l.msg), OperationId = tostring(l.trace_id))
 | order by TimeGenerated asc
 ```
 
@@ -98,7 +98,8 @@ hay una sobre la métrica propia:
 
 ## Sondas
 
-- `/health/live`: el proceso responde, con la versión (el sufijo de la revisión) y el nombre de la réplica. Container
-  Apps reinicia la réplica si falla 3 veces. Consultarla en un ciclo muestra el reparto del tráfico entre revisiones.
+- `/health/live`: el proceso responde, con la versión (`APP_VERSION`, distinta en cada despliegue) y el nombre de la
+  réplica. Container Apps reinicia la réplica si falla 3 veces. Consultarla en un ciclo muestra qué réplicas atienden
+  y el momento en que una revisión nueva toma el tráfico.
 - `/health/ready`: Postgres y Redis responden, y la réplica no está drenando. Si falla, la réplica deja de recibir
   tráfico pero no se reinicia.

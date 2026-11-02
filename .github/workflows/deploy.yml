@@ -26,6 +26,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Los IDs (no son secretos) los usan los scripts para volver a entrar con un token de OIDC nuevo.
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
   DEPLOYER_PRINCIPAL_ID: ${{ vars.DEPLOYER_PRINCIPAL_ID }}
   ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}
@@ -59,7 +63,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - id: deploy
-        name: Infraestructura, imagen, revisión nueva, prueba de humo y tráfico
+        name: Infraestructura, imagen, revisión nueva y prueba de humo
         env:
           GITHUB_SHA: ${{ steps.sha.outputs.sha }}
         run: infra/scripts/deploy.sh dev
@@ -85,7 +89,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - id: deploy
-        name: Misma imagen que dev, revisión nueva, prueba de humo y tráfico
+        name: Misma imagen que dev, revisión nueva y prueba de humo
         env:
           GITHUB_SHA: ${{ needs.dev.outputs.sha }}
         run: infra/scripts/deploy.sh prod

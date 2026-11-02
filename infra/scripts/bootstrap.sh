@@ -74,16 +74,27 @@ az identity create -g "$PIPELINE_RG" -n "$PIPELINE_IDENTITY" -l "$LOCATION" --on
 CLIENT_ID="$(az identity show -g "$PIPELINE_RG" -n "$PIPELINE_IDENTITY" --query clientId -o tsv)"
 PRINCIPAL_ID="$(az identity show -g "$PIPELINE_RG" -n "$PIPELINE_IDENTITY" --query principalId -o tsv)"
 
-# Una credencial federada por environment: solo los jobs de esos environments de este repo entran.
-for env in dev prod; do
+# Credenciales federadas por environment: solo los jobs de esos environments de este repo entran.
+# GitHub identifica el repo en el token de dos formas según la configuración de la cuenta: con
+# nombres (repo:dueño/repo:…) o con nombres e IDs inmutables (repo:dueño@123/repo@456:…). Se
+# registran las dos para que el login funcione con cualquiera.
+read -r OWNER_ID REPO_ID < <(gh api "repos/$REPO" --jq '"\(.owner.id) \(.id)"')
+OWNER="${REPO%%/*}"
+NAME="${REPO#*/}"
+federate() {
+  local name=$1 subject=$2
   if ! az identity federated-credential show -g "$PIPELINE_RG" --identity-name "$PIPELINE_IDENTITY" \
-    -n "github-$env" --only-show-errors >/dev/null 2>&1; then
+    -n "$name" --only-show-errors >/dev/null 2>&1; then
     az identity federated-credential create -g "$PIPELINE_RG" --identity-name "$PIPELINE_IDENTITY" \
-      -n "github-$env" \
+      -n "$name" \
       --issuer https://token.actions.githubusercontent.com \
-      --subject "repo:$REPO:environment:$env" \
+      --subject "$subject" \
       --audiences api://AzureADTokenExchange --only-show-errors >/dev/null
   fi
+}
+for env in dev prod; do
+  federate "github-$env" "repo:$REPO:environment:$env"
+  federate "github-$env-ids" "repo:$OWNER@$OWNER_ID/$NAME@$REPO_ID:environment:$env"
 done
 
 echo "==> Permisos en la suscripción"

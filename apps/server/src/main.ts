@@ -4,6 +4,7 @@ import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { observeGauges } from './observability/metrics.js';
 import { flushTelemetry } from './observability/telemetry.js';
+import { resolveSecrets } from './infra/key-vault.js';
 import { checkPostgres, createPostgresPool, ensureDatabase } from './infra/postgres.js';
 import { checkRedis, createRedisClient } from './infra/redis.js';
 import { createRealtime, createServices } from './services.js';
@@ -29,7 +30,8 @@ function every(ms: number, task: () => Promise<unknown>, onError: (err: unknown)
 }
 
 async function main(): Promise<void> {
-  const config = loadConfig();
+  // La llave de los JWT se lee de Key Vault antes de armar nada que la necesite.
+  const config = await resolveSecrets(loadConfig());
   const lifecycle: Lifecycle = { draining: false };
   const pool = createPostgresPool(config);
   const redis = createRedisClient(config);

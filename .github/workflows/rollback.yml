@@ -1,7 +1,7 @@
 name: Rollback
 
-# Devuelve el tráfico a la revisión anterior (sigue activa desde el último despliegue). Tarda
-# menos de un minuto; el procedimiento manual está en docs/deploy.md.
+# Vuelve a poner la imagen anterior al último despliegue (sigue en el registro). Tarda un par de
+# minutos y no corta partidas; el procedimiento manual está en docs/deploy.md.
 on:
   workflow_dispatch:
     inputs:
@@ -10,8 +10,8 @@ on:
         type: choice
         options: [prod, dev]
         default: prod
-      revision:
-        description: 'Revisión destino (vacío: la marcada como anterior)'
+      image:
+        description: 'Etiqueta de la imagen (vacío: la anterior al último despliegue)'
         required: false
 
 permissions:
@@ -21,6 +21,11 @@ permissions:
 concurrency:
   group: deploy
   cancel-in-progress: false
+
+env:
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
 jobs:
   rollback:
@@ -37,8 +42,8 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      - name: Tráfico a la revisión anterior y prueba de humo
+      - name: Imagen anterior y prueba de humo
         env:
           ENV_NAME: ${{ inputs.environment }}
-          TARGET: ${{ inputs.revision }}
+          TARGET: ${{ inputs.image }}
         run: infra/scripts/rollback.sh "$ENV_NAME" "$TARGET"
