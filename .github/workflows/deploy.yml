@@ -59,7 +59,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - id: deploy
-        name: Infraestructura, imagen, revisión nueva, prueba de humo y tráfico
+        name: Infraestructura, imagen, revisión nueva y prueba de humo
         env:
           GITHUB_SHA: ${{ steps.sha.outputs.sha }}
         run: infra/scripts/deploy.sh dev
@@ -85,7 +85,7 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - id: deploy
-        name: Misma imagen que dev, revisión nueva, prueba de humo y tráfico
+        name: Misma imagen que dev, revisión nueva y prueba de humo
         env:
           GITHUB_SHA: ${{ needs.dev.outputs.sha }}
         run: infra/scripts/deploy.sh prod

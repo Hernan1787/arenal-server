@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Rollback: reactiva la revisión anterior (la imagen sigue en el registro), le devuelve el 100 %
-# del tráfico y la prueba. Tarda un par de minutos. No toca la base de datos: las migraciones son
-# compatibles hacia atrás. Ver docs/deploy.md.
+# Rollback: vuelve a poner la imagen anterior (sigue en el registro). Container Apps crea una
+# revisión con esa imagen, le pasa el tráfico cuando está sana y apaga la actual; los clientes
+# reconectan sin perder la partida. No toca la base de datos: las migraciones son compatibles
+# hacia atrás. Tarda un par de minutos. Ver docs/deploy.md.
 #
-# Uso: infra/scripts/rollback.sh <dev|prod> [revisión]
+# Uso: infra/scripts/rollback.sh <dev|prod> [etiqueta-de-imagen]
+#   Sin etiqueta, usa la anterior al último despliegue (la etiqueta `imagenAnterior` de la app).
 set -euo pipefail
 
-ENV_NAME="${1:?Uso: rollback.sh <dev|prod> [revisión]}"
+ENV_NAME="${1:?Uso: rollback.sh <dev|prod> [etiqueta-de-imagen]}"
+[[ "$ENV_NAME" == dev || "$ENV_NAME" == prod ]] || { echo "Ambiente inválido: $ENV_NAME" >&2; exit 2; }
 # shellcheck source-path=SCRIPTDIR source=common.sh
 source "$(dirname "$0")/common.sh"
 
@@ -14,27 +17,27 @@ RG="rg-arenal-$ENV_NAME"
 APP="ca-arenal-$ENV_NAME"
 started=$SECONDS
 
-CURRENT="$(current_revision "$RG" "$APP")"
-TARGET="${2:-$(previous_revision "$RG" "$APP")}"
-[[ -n "$TARGET" ]] || { echo "No hay revisión anterior marcada; pasa una: rollback.sh $ENV_NAME <revisión>" >&2; exit 1; }
-[[ "$TARGET" != "$CURRENT" ]] || { echo "$TARGET ya recibe el tráfico" >&2; exit 1; }
-
-log "Rollback de $APP: $CURRENT -> $TARGET"
-if [[ "$(revision_active "$RG" "$APP" "$TARGET")" != true ]]; then
-  echo "   la revisión estaba inactiva; se activa"
-  az containerapp revision activate -g "$RG" -n "$APP" --revision "$TARGET" --only-show-errors
+current_image="$(az containerapp show -g "$RG" -n "$APP" --query "properties.template.containers[0].image" -o tsv)"
+registry="${current_image%%/*}"
+current_tag="${current_image##*:}"
+target_tag="${2:-}"
+if [[ -z "$target_tag" ]]; then
+  previous_image="$(az containerapp show -g "$RG" -n "$APP" --query "tags.imagenAnterior" -o tsv)"
+  target_tag="${previous_image##*:}"
 fi
+[[ -n "$target_tag" ]] || { echo "No hay imagen anterior anotada; pasa una: rollback.sh $ENV_NAME <etiqueta>" >&2; exit 1; }
+[[ "$target_tag" != "$current_tag" ]] || { echo "$APP ya corre la imagen $target_tag" >&2; exit 1; }
 
-# Espera a que la revisión tenga réplicas sanas antes de mandarle jugadores.
-for _ in $(seq 1 40); do
-  [[ "$(az containerapp revision show -g "$RG" -n "$APP" --revision "$TARGET" --query properties.healthState -o tsv)" == Healthy ]] && break
-  sleep 5
-done
-
-az containerapp ingress traffic set -g "$RG" -n "$APP" \
-  --revision-weight "$TARGET=100" "$CURRENT=0" --only-show-errors -o none
+VERSION="rollback-${target_tag:0:7}-$(date +%s)"
+log "Rollback de $APP: $current_tag -> $target_tag"
+# Las etiquetas quedan al revés: si hay que deshacer el rollback, la anterior es la que se quitó.
+az containerapp update -g "$RG" -n "$APP" --image "$registry/arenal-server:$target_tag" \
+  --set-env-vars "APP_VERSION=$VERSION" \
+  --tags proyecto=arenal "ambiente=$ENV_NAME" curso=diseno-de-software-tec \
+  "imagen=$registry/arenal-server:$target_tag" "imagenAnterior=$current_image" \
+  --only-show-errors -o none
 
 url="https://$(az containerapp show -g "$RG" -n "$APP" --query properties.configuration.ingress.fqdn -o tsv)"
-node "$INFRA_DIR/scripts/smoke.mjs" "$url"
+node "$INFRA_DIR/scripts/smoke.mjs" "$url" "$VERSION"
 echo
-echo "Rollback listo en $((SECONDS - started)) s: $url sirve $TARGET"
+echo "Rollback listo en $((SECONDS - started)) s: $url corre la imagen $target_tag"

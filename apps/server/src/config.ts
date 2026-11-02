@@ -42,8 +42,13 @@ const EnvSchema = z.object({
   /** Client ID de la identidad administrada asignada por el usuario (la pone Bicep). */
   AZURE_CLIENT_ID: z.uuid().optional(),
 
-  /** Llave privada ES256 en PEM (PKCS#8). Obligatoria en producción. */
+  /** Llave privada ES256 en PEM (PKCS#8). En producción viene de Key Vault (la variable siguiente). */
   JWT_PRIVATE_KEY: z.string().min(1).optional(),
+  /**
+   * URL del secreto con la llave en Key Vault (`https://<vault>.vault.azure.net/secrets/<nombre>`).
+   * La app lo lee al arrancar con su identidad administrada; el valor nunca pasa por la configuración.
+   */
+  JWT_PRIVATE_KEY_SECRET_URI: z.url({ protocol: /^https$/ }).optional(),
   JWT_ISSUER: z.string().min(1).default('arenal'),
   JWT_AUDIENCE: z.string().min(1).default('arenal-api'),
   ACCESS_TOKEN_TTL_S: z.coerce.number().int().min(60).max(3600).default(600),
@@ -107,8 +112,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     throw new ConfigError(`Configuración inválida:\n- ${problems.join('\n- ')}`);
   }
   const config = result.data;
-  if (config.NODE_ENV === 'production' && config.JWT_PRIVATE_KEY === undefined) {
-    throw new ConfigError('Configuración inválida:\n- JWT_PRIVATE_KEY: obligatoria en producción (viene de Key Vault)');
+  if (
+    config.NODE_ENV === 'production' &&
+    config.JWT_PRIVATE_KEY === undefined &&
+    config.JWT_PRIVATE_KEY_SECRET_URI === undefined
+  ) {
+    throw new ConfigError(
+      'Configuración inválida:\n- JWT_PRIVATE_KEY_SECRET_URI (o JWT_PRIVATE_KEY): obligatoria en producción',
+    );
   }
   // Un token de Entra ID nunca debe viajar sin cifrar.
   if (config.PG_AUTH === 'entra' && !config.PG_SSL) {

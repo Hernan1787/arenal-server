@@ -24,18 +24,12 @@ retry() {
   return 1
 }
 
-# Revisión que recibe el 100 % del tráfico y la marcada como anterior (para rollback).
-current_revision() {
-  az containerapp ingress traffic show -g "$1" -n "$2" \
-    --query "[?weight==\`100\`].revisionName | [0]" -o tsv 2>/dev/null || true
-}
-previous_revision() {
-  az containerapp ingress traffic show -g "$1" -n "$2" \
-    --query "[?label=='previous'].revisionName | [0]" -o tsv 2>/dev/null || true
-}
-
-revision_active() {
-  az containerapp revision show -g "$1" -n "$2" --revision "$3" --query properties.active -o tsv 2>/dev/null || true
+# Etiqueta de la imagen que corre hoy la app (vacío si la app no existe).
+app_image_tag() {
+  local image
+  image="$(az containerapp show -g "$1" -n "$2" --query "properties.template.containers[0].image" -o tsv 2>/dev/null || true)"
+  [[ -n "$image" ]] && echo "${image##*:}"
+  return 0
 }
 
 # Purga los Key Vault borrados de un ambiente (quedan retenidos 7 días con su nombre).

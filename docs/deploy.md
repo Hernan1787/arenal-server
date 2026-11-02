@@ -8,7 +8,7 @@ usa el pipeline. Un ambiente se crea completo, desde cero, con una sola ejecuci�
 ## Arquitectura
 
 ```
-Jugadores ──HTTPS / WSS──▶ Container Apps (ca-arenal-<amb> en cae-arenal, 2+ réplicas, revisiones múltiples)
+Jugadores ──HTTPS / WSS──▶ Container Apps (ca-arenal-<amb> en cae-arenal, 2+ réplicas, una revisión activa)
                               │  identidad administrada id-arenal-<amb>
                               ├──▶ PostgreSQL Flexible B1ms   (token de Entra ID, TLS; sin contraseñas)
                               ├──▶ Azure Managed Redis B0     (token de Entra ID, TLS, sin agrupar; sin llaves)
@@ -24,17 +24,17 @@ identidad, sus datos, su registro y su Key Vault. Comparten solo el **ambiente d
 Container Apps ([ADR 0011](adr/0011-limites-de-azure-for-students.md)). Las dos apps viven en él con nombres y URLs
 distintas.
 
-| Recurso                | Nombre                                              | Para qué                                        |
-| ---------------------- | --------------------------------------------------- | ----------------------------------------------- |
-| Grupo de recursos      | `rg-arenal-<amb>`                                   | Todo el ambiente; borrarlo borra todo           |
-| Identidad administrada | `id-arenal-<amb>`                                   | La única identidad de la app                    |
-| Container App          | `ca-arenal-<amb>`                                   | El servidor; revisiones con división de tráfico |
-| PostgreSQL Flexible    | `psql-arenal-<amb>-<sufijo>`                        | Partidas, eventos, usuarios, auditoría          |
-| Azure Managed Redis    | `redis-arenal-<amb>-<sufijo>`                       | Pub/sub entre réplicas, tickets, presencia      |
-| Key Vault              | `kv-arenal-<amb>-<sufijo>`                          | `jwt-private-key`, generada por el pipeline     |
-| Container Registry     | `acrarenal<amb><sufijo>`                            | Imágenes `arenal-server:<sha>`                  |
-| Application Insights   | `appi-arenal-<amb>`                                 | Trazas y métricas (en el workspace compartido)  |
-| Alertas y presupuesto  | `ag-arenal-<amb>`, `alert-…`, `budget-arenal-<amb>` | Correo al equipo                                |
+| Recurso                | Nombre                                              | Para qué                                       |
+| ---------------------- | --------------------------------------------------- | ---------------------------------------------- |
+| Grupo de recursos      | `rg-arenal-<amb>`                                   | Todo el ambiente; borrarlo borra todo          |
+| Identidad administrada | `id-arenal-<amb>`                                   | La única identidad de la app                   |
+| Container App          | `ca-arenal-<amb>`                                   | El servidor; una revisión nueva por despliegue |
+| PostgreSQL Flexible    | `psql-arenal-<amb>-<sufijo>`                        | Partidas, eventos, usuarios, auditoría         |
+| Azure Managed Redis    | `redis-arenal-<amb>-<sufijo>`                       | Pub/sub entre réplicas, tickets, presencia     |
+| Key Vault              | `kv-arenal-<amb>-<sufijo>`                          | `jwt-private-key`, generada por el pipeline    |
+| Container Registry     | `acrarenal<amb><sufijo>`                            | Imágenes `arenal-server:<sha>`                 |
+| Application Insights   | `appi-arenal-<amb>`                                 | Trazas y métricas (en el workspace compartido) |
+| Alertas y presupuesto  | `ag-arenal-<amb>`, `alert-…`, `budget-arenal-<amb>` | Correo al equipo                               |
 
 Compartido entre los dos ambientes:
 
@@ -60,8 +60,10 @@ Ninguna conexión usa contraseñas, llaves ni cadenas de conexión con credencia
 | Pipeline                                         | Key Vault, registro  | `Key Vault Secrets Officer` (crea el secreto), `AcrPush`                         |
 
 El único secreto del sistema es la llave privada ES256 de los JWT. La genera `deploy.sh` con `openssl` dentro del
-runner la primera vez y la escribe directo en Key Vault; Container Apps la lee con la identidad (referencia de
-secreto) y el valor nunca aparece en la plantilla, en los logs ni en el repo.
+runner la primera vez y la escribe directo en Key Vault. La app recibe solo la URL del secreto
+(`JWT_PRIVATE_KEY_SECRET_URI`) y lo lee al arrancar con su identidad: el valor nunca aparece en la plantilla, en la
+configuración de Container Apps, en los logs ni en el repo. (Los ambientes Express no tienen referencias a Key
+Vault, por eso lo lee la app; [ADR 0011](adr/0011-limites-de-azure-for-students.md).)
 
 ## Preparación (una sola vez)
 
@@ -101,32 +103,36 @@ Cuando el CI de `main` pasa, el workflow corre `deploy.sh dev`, y después de la
 2. **Secreto:** si `jwt-private-key` no existe en Key Vault, lo genera. Si existe, no lo toca.
 3. **Imagen:** dev construye la imagen y la sube a su registro. Prod **importa la misma imagen** que pasó por dev
    (`az acr import`): lo que se aprueba es exactamente lo que se probó.
-4. **Revisión nueva** `ca-arenal-<amb>--c<sha>-<corrida>` con **0 % del tráfico** y la etiqueta `next`.
-5. **Prueba de humo** contra la URL propia de la revisión nueva (`…---next.<dominio>`): `/health/ready`, `/docs`,
-   registro (Postgres y la llave de Key Vault), ticket (Redis) y apertura del WebSocket. Si falla, la revisión se
-   apaga y producción sigue igual.
-6. **Promoción:** la revisión nueva recibe el 100 % y la anterior queda marcada como `previous`. Pasados 60 s, las
-   revisiones viejas se apagan.
+4. **Revisión nueva** con la imagen nueva y `APP_VERSION=c<sha>-<corrida>`. El ambiente es Express: una sola
+   revisión activa, sin tráfico dividido. Container Apps arranca la revisión nueva, espera a que pase la sonda de
+   disponibilidad (`/health/ready`), le pasa todo el tráfico y apaga la anterior. La imagen que había queda anotada
+   en la etiqueta `imagenAnterior` de la app.
+5. **Prueba de humo** contra la URL pública: espera a que `/health/live` responda la versión nueva y después prueba
+   `/health/ready`, `/docs`, registro (Postgres y la llave de Key Vault), ticket (Redis) y apertura del WebSocket.
+   Si falla, el script hace el rollback a la imagen anterior y el despliegue queda en rojo.
 
 ### Sin cortar partidas
 
 - El estado de cada partida vive en Postgres, no en la réplica. Una réplica puede desaparecer en cualquier momento.
-- Al cambiar el tráfico, las conexiones nuevas van a la revisión nueva. Al apagarse la vieja, cada réplica recibe
-  `SIGTERM`, deja de aceptar conexiones (503 en `/health/ready`) y cierra cada WebSocket con **1012**. El cliente
-  reconecta con un ticket nuevo, cae en la revisión nueva y recibe el `snapshot` de su partida. El periodo de gracia
-  (60 s) cubre la reconexión de sobra.
+- La revisión nueva recibe tráfico solo cuando su sonda de disponibilidad pasa. Al apagarse la vieja, cada réplica
+  recibe `SIGTERM`, deja de aceptar conexiones (503 en `/health/ready`) y cierra cada WebSocket con **1012**. El
+  cliente (`ReconnectingSession` de `@arenal/client`) reconecta con un ticket nuevo, cae en la revisión nueva y
+  recibe el `snapshot` de su partida. El periodo de gracia (60 s) cubre la reconexión de sobra.
 - Las migraciones tienen que ser **compatibles hacia atrás** (agregar columnas o tablas, nunca renombrar ni borrar
   en el mismo despliegue): durante el cambio conviven dos versiones del servidor sobre la misma base.
 
 ## Rollback (menos de 5 minutos)
 
-La revisión anterior sigue existiendo y su imagen sigue en el registro.
+Las imágenes anteriores siguen en el registro, y la app anota cuál corría antes del último despliegue (etiqueta
+`imagenAnterior`). Un rollback es volver a poner esa imagen: Container Apps crea una revisión con ella y la cambia
+igual que en un despliegue, sin cortar partidas.
 
-- **Con el pipeline:** _Actions > Rollback > Run workflow_, ambiente `prod`. Reactiva la revisión `previous`,
-  espera a que esté sana, le devuelve el 100 % del tráfico y corre la prueba de humo. Imprime cuánto tardó.
-- **Desde Cloud Shell:** `infra/scripts/rollback.sh prod` (o `rollback.sh prod <revisión>` para elegir otra).
-- **A mano en el portal:** _Container App > Revisiones y réplicas_: activar la revisión anterior y, en
-  _Tráfico_, ponerle 100 %.
+- **Con el pipeline:** _Actions > Rollback > Run workflow_, ambiente `prod` (o una etiqueta de imagen concreta).
+  Pone la imagen anterior, espera a que responda y corre la prueba de humo. Imprime cuánto tardó.
+- **Desde Cloud Shell:** `infra/scripts/rollback.sh prod` (o `rollback.sh prod <etiqueta>` para elegir otra).
+- **A mano:** `az containerapp update -g rg-arenal-prod -n ca-arenal-prod --image <registro>/arenal-server:<etiqueta>`.
+
+Si una revisión nueva no pasa la prueba de humo, `deploy.sh` hace este mismo rollback solo.
 
 El rollback no toca la base de datos, porque las migraciones son compatibles hacia atrás.
 
