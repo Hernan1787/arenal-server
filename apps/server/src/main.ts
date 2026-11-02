@@ -45,6 +45,7 @@ async function main(): Promise<void> {
   const services = await createServices({ db: pool, redis, config, clock: systemClock, log });
   const server = await buildApp({
     version: VERSION,
+    replica: config.REPLICA_ID,
     lifecycle,
     logger: log,
     allowedOrigins: config.ALLOWED_ORIGINS,

@@ -4,12 +4,13 @@
  *   pnpm play --url http://localhost:8080 --name Hernán
  *
  * Crea un usuario temporal, y deja elegir entre la cola rápida, crear una sala privada o unirse
- * con un código. Durante la partida muestra la mesa y pide la carta cuando es tu turno.
+ * con un código. Durante la partida muestra la mesa y pide la carta cuando es tu turno. Si la
+ * réplica se apaga (por ejemplo al publicar una revisión nueva), reconecta sola y sigue jugando.
  */
 import { createInterface } from 'node:readline/promises';
-import { RejectedError, type RealtimeSession } from '@arenal/client';
+import { RejectedError, type ReconnectingSession } from '@arenal/client';
 import type { Card, PlayerEvent, PlayerView } from '@arenal/domain';
-import { arg, connect, createPlayer, type Player } from './players.js';
+import { arg, connectResilient, createPlayer, type Player } from './players.js';
 
 const url = arg('url', 'http://localhost:8080');
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -78,7 +79,7 @@ async function lobby(player: Player): Promise<void> {
 const givenName = arg('name', '');
 const player = await createPlayer(url, givenName || (await rl.question('Tu nombre: ')).trim() || 'Jugador');
 const who = (id: string): string => (id === player.id ? 'Tú' : `Jugador ${id.slice(0, 4)}`);
-const conn: { socket?: RealtimeSession } = {};
+const conn: { link?: ReconnectingSession } = {};
 let asking = false;
 
 let pendingAsk: NodeJS.Timeout | undefined;
@@ -87,7 +88,7 @@ let pendingAsk: NodeJS.Timeout | undefined;
 function scheduleAsk(): void {
   clearTimeout(pendingAsk);
   pendingAsk = setTimeout(() => {
-    const view = conn.socket?.view ?? null;
+    const view = conn.link?.current.view ?? null;
     if (view !== null) void askCard(view);
   }, 80);
 }
@@ -98,7 +99,8 @@ async function askCard(view: PlayerView): Promise<void> {
   try {
     showTable(view, who);
     for (;;) {
-      const socket = conn.socket;
+      // La conexión puede cambiar mientras se espera la respuesta (reconexión): se toma la vigente.
+      const socket = conn.link?.current;
       if (socket === undefined) return;
       const hand = socket.view?.you?.hand ?? [];
       const answer = Number((await rl.question('Es tu turno. Carta: ')).trim());
@@ -117,24 +119,35 @@ async function askCard(view: PlayerView): Promise<void> {
   }
 }
 
-conn.socket = await connect(player, {
-  onSnapshot: (view) => {
-    if (view.currentPlayer !== player.id) showTable(view, who);
-    scheduleAsk();
+conn.link = await connectResilient(
+  player,
+  {
+    onSnapshot: (view) => {
+      if (view.currentPlayer !== player.id) showTable(view, who);
+      scheduleAsk();
+    },
+    onEvent: (event, _seq, view) => {
+      const line = describe(event, player.id, who);
+      if (line !== null) console.log(line);
+      if (event.type === 'MatchEnded') {
+        void lobby(player);
+        return;
+      }
+      if (view.status === 'playing') scheduleAsk();
+    },
+    onClose: (code, reason) => {
+      console.log(`Conexión cerrada (${code}${reason ? `: ${reason}` : ''}).`);
+      process.exit(0);
+    },
   },
-  onEvent: (event, _seq, view) => {
-    const line = describe(event, player.id, who);
-    if (line !== null) console.log(line);
-    if (event.type === 'MatchEnded') {
-      void lobby(player);
-      return;
-    }
-    if (view.status === 'playing') scheduleAsk();
+  {
+    onDisconnect: (code, reason) => {
+      console.log(`\n[conexión] Se cerró (${code}${reason ? `: ${reason}` : ''}). Reconectando…`);
+    },
+    onReconnect: (attempts) => {
+      console.log(`[conexión] Reconectado (${attempts} intento${attempts === 1 ? '' : 's'}). La partida sigue.`);
+    },
   },
-  onClose: (code) => {
-    console.log(`Conexión cerrada (${code}).`);
-    process.exit(0);
-  },
-});
+);
 console.log(`Conectado a ${url} como ${player.name}.`);
 await lobby(player);

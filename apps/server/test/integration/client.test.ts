@@ -1,4 +1,4 @@
-import { ArenalApi, chooseCard, isMyTurn, RealtimeSession, RejectedError } from '@arenal/client';
+import { ArenalApi, chooseCard, isMyTurn, ReconnectingSession, RealtimeSession, RejectedError } from '@arenal/client';
 import { viewFor, type PlayerView } from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { useHarness } from './harness.js';
@@ -77,5 +77,96 @@ describe('cliente de Arenal contra el servidor', () => {
       socket.close();
     }
     expect(loaded.state.status).toBe('finished');
+  });
+
+  it('si se corta la conexión a mitad de partida, reconecta, recibe el snapshot y la termina igual', async () => {
+    const base = `http://${h.baseUrl}`;
+    const apis = [new ArenalApi(base), new ArenalApi(base)];
+    const sessions = await Promise.all(
+      apis.map((api, i) =>
+        api.register({
+          email: `reconecta${i}-${Date.now()}@ejemplo.com`,
+          password: `p-${crypto.randomUUID()}`,
+          displayName: `Reconecta ${i}`,
+        }),
+      ),
+    );
+
+    let finish: () => void = () => undefined;
+    const ended = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const links: ReconnectingSession[] = [];
+    let reconnects = 0;
+    let cut = false;
+    const play = (link: ReconnectingSession, view: PlayerView): void => {
+      if (view.status === 'finished') finish();
+      if (!isMyTurn(view)) return;
+      setTimeout(() => {
+        const socket = link.current;
+        const current = socket.view;
+        const card = isMyTurn(current) ? chooseCard(current) : undefined;
+        if (card === undefined) return;
+        // Se reintenta si el servidor pide bajar el ritmo o si la jugada salió por la conexión que se
+        // acaba de cortar; un STALE_STATE se resuelve solo con el evento que viene en camino.
+        socket.playCard(card.id).catch((error: unknown) => {
+          if (error instanceof RejectedError && error.code !== 'RATE_LIMITED') return;
+          setTimeout(() => {
+            const latest = link.current.view;
+            if (latest !== null) play(link, latest);
+          }, 200);
+        });
+      }, 20);
+    };
+    for (const api of apis) {
+      const holder: { link?: ReconnectingSession } = {};
+      const link = await ReconnectingSession.open(
+        api,
+        {
+          onSnapshot: (view) => {
+            if (holder.link !== undefined) play(holder.link, view);
+          },
+          onEvent: (_event, seq, view) => {
+            if (holder.link === undefined) return;
+            // A mitad de partida se corta la conexión del primer jugador, como cuando su réplica se apaga.
+            if (!cut && seq >= 12 && holder.link === links[0]) {
+              cut = true;
+              holder.link.current.close(3000);
+              return;
+            }
+            play(holder.link, view);
+          },
+        },
+        {
+          initialDelayMs: 50,
+          onReconnect: () => {
+            reconnects += 1;
+          },
+        },
+      );
+      holder.link = link;
+      links.push(link);
+    }
+
+    const [host, guest] = apis;
+    if (host === undefined || guest === undefined) throw new Error('faltan clientes');
+    const room = await host.createRoom({ visibility: 'public', capacity: 2 });
+    await guest.joinRoom(room.id);
+    await host.setReady(room.id, true);
+    const started = await guest.setReady(room.id, true);
+    await ended;
+
+    expect(cut).toBe(true);
+    expect(reconnects).toBe(1);
+    const loaded = await h.services.store.load(started.matchId ?? '');
+    if (loaded === undefined) throw new Error('no existe la partida');
+    expect(loaded.state.status).toBe('finished');
+    // Al final, la vista de cada uno (la del que reconectó también) es exactamente la del servidor.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    for (const [i, link] of links.entries()) {
+      expect(link.current.seq).toBe(loaded.row.seq);
+      expect(link.current.view).toEqual(viewFor(loaded.state, sessions[i]?.user.id ?? null));
+      link.close();
+    }
   });
 });

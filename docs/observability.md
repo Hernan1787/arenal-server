@@ -98,6 +98,7 @@ hay una sobre la métrica propia:
 
 ## Sondas
 
-- `/health/live`: el proceso responde. Container Apps reinicia la réplica si falla 3 veces.
+- `/health/live`: el proceso responde, con la versión (el sufijo de la revisión) y el nombre de la réplica. Container
+  Apps reinicia la réplica si falla 3 veces. Consultarla en un ciclo muestra el reparto del tráfico entre revisiones.
 - `/health/ready`: Postgres y Redis responden, y la réplica no está drenando. Si falla, la réplica deja de recibir
   tráfico pero no se reinicia.

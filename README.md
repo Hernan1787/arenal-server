@@ -25,7 +25,7 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Administración                                 | Partidas en curso, conexiones de todas las réplicas, terminar partida, suspender y reactivar; todo auditado                                                                                    |
 | Infraestructura en Azure (Bicep) y despliegue  | Bicep completo, identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback; falta la suscripción                                                                    |
 | Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                                                                                     |
-| Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`)                                                                                                          |
+| Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`); los dos reconectan solos si su réplica se apaga y siguen la misma partida                               |
 | Prueba de carga                                | Partidas reales por WebSocket. En local cumple p95 < 200 ms hasta 400 partidas simultáneas; la caché de estado subió el punto de quiebre de 300 a 500 ([docs/load-test.md](docs/load-test.md)) |
 
 URL pública en Azure: pendiente (falta activar la suscripción; los pasos están en [docs/deploy.md](docs/deploy.md)).

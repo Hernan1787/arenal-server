@@ -26,6 +26,21 @@ describe('sondas de salud', () => {
     expect(res.json()).toEqual({ status: 'ok', version: 'test' });
   });
 
+  it('/health/live dice qué versión y qué réplica respondió', async () => {
+    const instance = await buildApp({
+      version: 'c1a2b3c',
+      replica: 'ca-arenal-prod--c1a2b3c-7-abc',
+      checks: {},
+      lifecycle: { draining: false },
+    });
+    close = () => instance.close();
+    expect((await instance.inject('/health/live')).json()).toEqual({
+      status: 'ok',
+      version: 'c1a2b3c',
+      replica: 'ca-arenal-prod--c1a2b3c-7-abc',
+    });
+  });
+
   it('/health/ready responde 200 cuando Postgres y Redis responden', async () => {
     const res = await (await app({ postgres: okCheck, redis: okCheck })).inject('/health/ready');
     expect(res.statusCode).toBe(200);
