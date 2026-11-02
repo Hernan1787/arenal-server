@@ -63,9 +63,9 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
       registries: [{ server: registryServer, identity: identityId }]
     }
     template: {
-      // El servidor drena en 25 s (SHUTDOWN_GRACE_MS): cierra los WebSocket con 1012 y los
-      // clientes reconectan a la revisión nueva.
-      terminationGracePeriodSeconds: 30
+      // Express no deja cambiar el plazo de apagado; el de Container Apps es de 30 s y el servidor
+      // drena en 25 (SHUTDOWN_GRACE_MS): cierra los WebSocket con 1012 y los clientes reconectan a la
+      // revisión nueva.
       containers: [
         {
           name: 'server'
