@@ -51,6 +51,7 @@ REGISTRY="$(jq -r .registryServer.value <<<"$base")"
 VAULT="$(jq -r .vaultName.value <<<"$base")"
 
 log "2/5 Secreto de firma de los JWT"
+refresh_login
 secret_exists() { az keyvault secret show --vault-name "$VAULT" --name jwt-private-key --query id -o tsv >/dev/null 2>&1; }
 create_secret() {
   local key_file
@@ -70,6 +71,7 @@ else
 fi
 
 log "3/5 Imagen arenal-server:$TAG"
+refresh_login
 if az acr repository show --name "$ACR" --image "arenal-server:$TAG" --only-show-errors >/dev/null 2>&1; then
   echo "   ya está en $ACR"
 elif [[ "$ENV_NAME" == prod ]]; then
@@ -85,6 +87,7 @@ else
 fi
 
 log "4/5 Revisión nueva de $APP ($VERSION)"
+refresh_login
 PREVIOUS_TAG="$(app_image_tag "$RG" "$APP")"
 echo "   imagen actual: ${PREVIOUS_TAG:-ninguna (primer despliegue)}"
 export DEPLOY_APP=true IMAGE_TAG="$TAG" APP_VERSION="$VERSION" PREVIOUS_IMAGE_TAG="$PREVIOUS_TAG"

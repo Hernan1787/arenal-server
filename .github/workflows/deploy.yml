@@ -26,6 +26,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Los IDs (no son secretos) los usan los scripts para volver a entrar con un token de OIDC nuevo.
+  AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
   DEPLOYER_PRINCIPAL_ID: ${{ vars.DEPLOYER_PRINCIPAL_ID }}
   ALERT_EMAIL: ${{ secrets.ALERT_EMAIL }}

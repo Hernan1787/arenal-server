@@ -9,6 +9,21 @@ az config set extension.use_dynamic_install=yes_without_prompt --only-show-error
 
 log() { printf '\n==> %s\n' "$*"; }
 
+# En GitHub Actions, el token de OIDC con que entró azure/login vence a los 5 minutos, y Azure CLI
+# lo vuelve a necesitar cada vez que pide un token para otro servicio (Key Vault, el registro).
+# Después de un paso largo (crear Postgres y Redis tarda más de 10) se entra otra vez con un token
+# recién pedido a GitHub. Fuera de GitHub Actions no hace nada.
+refresh_login() {
+  [[ -n "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" && -n "${AZURE_CLIENT_ID:-}" ]] || return 0
+  local token
+  token="$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+    "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://AzureADTokenExchange" | jq -r .value)"
+  echo "::add-mask::$token"
+  az login --service-principal -u "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" \
+    --federated-token "$token" --allow-no-subscriptions --only-show-errors -o none
+  az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+}
+
 # Reintenta un comando: los permisos recién asignados en Azure tardan unos minutos en aplicar.
 retry() {
   local attempts=$1

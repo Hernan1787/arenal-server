@@ -16,6 +16,7 @@ source "$(dirname "$0")/common.sh"
 RG="rg-arenal-$ENV_NAME"
 APP="ca-arenal-$ENV_NAME"
 started=$SECONDS
+refresh_login
 
 current_image="$(az containerapp show -g "$RG" -n "$APP" --query "properties.template.containers[0].image" -o tsv)"
 registry="${current_image%%/*}"
