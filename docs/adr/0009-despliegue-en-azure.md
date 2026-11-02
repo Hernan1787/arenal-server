@@ -2,6 +2,8 @@
 
 - Estado: aceptada
 - Fecha: 29 de octubre de 2026
+- Modificada por: [0011](0011-limites-de-azure-for-students.md) (ambiente de Container Apps compartido e identidad
+  administrada para el pipeline)
 
 ## Contexto
 
