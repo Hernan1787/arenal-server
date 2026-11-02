@@ -1,5 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { ArenalApi, RealtimeSession, type RealtimeHandlers } from '@arenal/client';
+import {
+  ArenalApi,
+  ReconnectingSession,
+  RealtimeSession,
+  type RealtimeHandlers,
+  type ReconnectOptions,
+} from '@arenal/client';
 
 export interface Player {
   readonly api: ArenalApi;
@@ -40,6 +46,15 @@ export async function createPlayers(
 
 export async function connect(player: Player, handlers: RealtimeHandlers = {}): Promise<RealtimeSession> {
   return RealtimeSession.open(player.api.baseUrl, await player.api.realtimeTicket(), handlers);
+}
+
+/** Como `connect`, pero si la réplica se apaga (1012) o se corta la red, vuelve a conectar sola. */
+export function connectResilient(
+  player: Player,
+  handlers: RealtimeHandlers = {},
+  options: ReconnectOptions = {},
+): Promise<ReconnectingSession> {
+  return ReconnectingSession.open(player.api, handlers, options);
 }
 
 /** Arma una partida por sala: el primero la crea, los demás se unen y todos marcan «listo». */

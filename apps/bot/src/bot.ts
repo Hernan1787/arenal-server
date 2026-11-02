@@ -4,11 +4,12 @@
  *   pnpm bot --url http://localhost:8080 --bots 4 --games 3 --think 300
  *
  * Cada bot se registra, abre su WebSocket, entra a la cola y juega con una estrategia simple
- * (ver @arenal/client). Al terminar una partida vuelve a la cola hasta jugar `--games`.
+ * (ver @arenal/client). Al terminar una partida vuelve a la cola hasta jugar `--games`. Si su
+ * réplica se apaga, reconecta y sigue la misma partida.
  */
-import { chooseCard, isMyTurn, RejectedError, type RealtimeSession } from '@arenal/client';
+import { chooseCard, isMyTurn, RejectedError, type ReconnectingSession } from '@arenal/client';
 import type { PlayerView } from '@arenal/domain';
-import { arg, connect, createPlayers, sleep, type Player } from './players.js';
+import { arg, connectResilient, createPlayers, sleep, type Player } from './players.js';
 
 const url = arg('url', 'http://localhost:8080');
 const bots = Number(arg('bots', '4'));
@@ -24,7 +25,7 @@ interface Stats {
 async function runBot(player: Player): Promise<Stats> {
   const stats: Stats = { played: 0, moves: 0, wins: 0 };
   let timer: NodeJS.Timeout | undefined;
-  const conn: { socket?: RealtimeSession } = {};
+  const conn: { link?: ReconnectingSession } = {};
   let finish: () => void = () => undefined;
   const done = new Promise<void>((resolve) => {
     finish = resolve;
@@ -46,7 +47,7 @@ async function runBot(player: Player): Promise<Stats> {
     if (!isMyTurn(view)) return;
     // Espera un poco (como una persona) y juega sobre la versión que tenga en ese momento.
     timer = setTimeout(() => {
-      const socket = conn.socket;
+      const socket = conn.link?.current;
       const current = socket?.view ?? null;
       const card = isMyTurn(current) ? chooseCard(current) : undefined;
       if (socket === undefined || card === undefined) return;
@@ -69,16 +70,31 @@ async function runBot(player: Player): Promise<Stats> {
     }, thinkMs);
   };
 
-  const socket = await connect(player, {
-    onSnapshot: consider,
-    onEvent: (_event, _seq, view) => {
-      consider(view);
+  const link = await connectResilient(
+    player,
+    {
+      onSnapshot: consider,
+      onEvent: (_event, _seq, view) => {
+        consider(view);
+      },
     },
-  });
-  conn.socket = socket;
+    {
+      onDisconnect: (code) => {
+        console.log(`${player.name}: se cerró la conexión (${code}); reconectando`);
+      },
+      onReconnect: () => {
+        console.log(`${player.name}: reconectado`);
+      },
+      onGiveUp: (code) => {
+        if (code !== 1000) console.error(`${player.name}: sin conexión (${code})`);
+        finish();
+      },
+    },
+  );
+  conn.link = link;
   await player.api.enqueue();
   await done;
-  socket.close();
+  link.close();
   return stats;
 }
 

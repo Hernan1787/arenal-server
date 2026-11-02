@@ -30,6 +30,8 @@ export interface Lifecycle {
 
 export interface AppOptions {
   readonly version: string;
+  /** Nombre de la réplica; `/health/live` lo muestra para ver a cuál llegó cada solicitud. */
+  readonly replica?: string;
   readonly checks: Readonly<Record<string, HealthCheck>>;
   readonly lifecycle: Lifecycle;
   /** Logger de pino ya configurado; sin él, la app no escribe logs. */
@@ -146,7 +148,11 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     await app.register(swaggerUi, { routePrefix: '/docs', staticCSP: true });
   }
 
-  app.get('/health/live', { schema: { hide: true } }, () => ({ status: 'ok', version: options.version }));
+  app.get('/health/live', { schema: { hide: true } }, () => ({
+    status: 'ok',
+    version: options.version,
+    ...(options.replica !== undefined && { replica: options.replica }),
+  }));
 
   app.get('/health/ready', { schema: { hide: true } }, async (request, reply) => {
     if (options.lifecycle.draining) {
