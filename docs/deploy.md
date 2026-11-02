@@ -193,5 +193,9 @@ Todas avisan por correo al grupo de acciones `ag-arenal-<amb>`.
   genérico cuando la región no tiene capacidad. Borrar lo creado (`destroy.sh dev --yes` y `destroy.sh shared
 --yes`), cambiar `AZURE_LOCATION` en las variables del repo a otra región permitida y volver a desplegar: el
   ambiente compartido no se puede mover de región.
+- **`AADSTS700213: No matching federated identity record`:** el token de GitHub identifica el repo con un formato
+  que no tiene credencial. `bootstrap.sh` registra los dos que usa GitHub (`repo:dueño/repo:environment:<amb>` y
+  `repo:dueño@<id>/repo@<id>:environment:<amb>`); el error muestra el que llegó, y basta con agregarlo a
+  `id-arenal-github` como credencial federada.
 - **«cannot have more than 1 Container App Environments»:** la suscripción ya tiene otro ambiente de Container Apps
   (o uno borrado hace poco que todavía cuenta). `bootstrap.sh` avisa si encuentra alguno.
