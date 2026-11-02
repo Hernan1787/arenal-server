@@ -1,5 +1,6 @@
 // Recursos de un ambiente que no cambian con cada versión del servidor: identidad, registro,
-// secretos, datos, observabilidad, el ambiente de Container Apps y el presupuesto.
+// secretos, datos, Application Insights, alertas y presupuesto. El ambiente de Container Apps y
+// el workspace de Log Analytics son compartidos entre dev y prod (shared.bicep).
 // Ninguna conexión usa contraseñas ni llaves: todo entra con la identidad administrada.
 
 @description('dev o prod')
@@ -29,6 +30,9 @@ param budgetStartDate string
 @description('Alta disponibilidad de Redis (duplica el costo). Solo en prod si el crédito alcanza.')
 param redisHighAvailability bool = false
 
+@description('Workspace de Log Analytics compartido (shared.bicep)')
+param logsWorkspaceId string
+
 param tags object = {}
 
 var name = 'arenal-${environmentName}'
@@ -43,17 +47,6 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' 
 
 // --- Observabilidad --------------------------------------------------------------------------
 
-resource logs 'Microsoft.OperationalInsights/workspaces@2025-07-01' = {
-  name: 'log-${name}'
-  location: location
-  tags: tags
-  properties: {
-    sku: { name: 'PerGB2018' }
-    retentionInDays: 30
-    workspaceCapping: { dailyQuotaGb: 1 }
-  }
-}
-
 // Sin llave de ingesta: la telemetría entra solo con Entra ID (la identidad de la app).
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: 'appi-${name}'
@@ -62,7 +55,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   tags: tags
   properties: {
     Application_Type: 'web'
-    WorkspaceResourceId: logs.id
+    WorkspaceResourceId: logsWorkspaceId
     DisableLocalAuth: true
     RetentionInDays: 30
   }
@@ -242,30 +235,6 @@ resource deployerWritesSecrets 'Microsoft.Authorization/roleAssignments@2022-04-
   }
 }
 
-// --- Container Apps --------------------------------------------------------------------------
-
-// Los logs van a Log Analytics por una configuración de diagnóstico, sin la llave del workspace.
-resource containerEnv 'Microsoft.App/managedEnvironments@2025-07-01' = {
-  name: 'cae-${name}'
-  location: location
-  tags: tags
-  properties: {
-    appLogsConfiguration: { destination: 'azure-monitor' }
-    workloadProfiles: [{ name: 'Consumption', workloadProfileType: 'Consumption' }]
-    zoneRedundant: false
-  }
-}
-
-resource containerEnvLogs 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  scope: containerEnv
-  name: 'logs'
-  properties: {
-    workspaceId: logs.id
-    logs: [{ categoryGroup: 'allLogs', enabled: true }]
-    metrics: [{ category: 'AllMetrics', enabled: true }]
-  }
-}
-
 // --- Alertas y presupuesto -------------------------------------------------------------------
 
 resource alerts 'Microsoft.Insights/actionGroups@2023-01-01' = {
@@ -374,8 +343,6 @@ output vaultName string = vault.name
 output vaultUri string = vault.properties.vaultUri
 output postgresHost string = postgres.properties.fullyQualifiedDomainName
 output redisHost string = redis.properties.hostName
-output containerEnvId string = containerEnv.id
-output containerEnvDomain string = containerEnv.properties.defaultDomain
 output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output appInsightsId string = appInsights.id
 output actionGroupId string = alerts.id

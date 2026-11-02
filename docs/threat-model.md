@@ -24,7 +24,7 @@ amenaza se indica el control que la mitiga, dónde está y cómo se prueba. Al f
 
 1. Clientes (navegador, bot, terminal): no confiables. Todo lo que mandan se valida.
 2. Servicios de datos: confiables solo con la identidad administrada, nunca con secretos.
-3. Pipeline: entra con una credencial federada por environment; prod pide aprobación.
+3. Pipeline: entra con una identidad administrada y una credencial federada por environment; prod pide aprobación.
 4. Operación: el rol de administrador solo se da desde dentro del contenedor.
 
 ## Amenazas y controles
@@ -94,11 +94,12 @@ amenaza se indica el control que la mitiga, dónde está y cómo se prueba. Al f
 
 ## Riesgos aceptados
 
-| Riesgo                                                      | Por qué se acepta                                                                                                                                   | Qué lo reduciría                                               |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Postgres y Redis con endpoint público (sin VNet)            | Los endpoints privados y la VNet suben el costo fuera del crédito de estudiante. Sin un token de Entra ID del tenant no se entra, y todo va por TLS | Ambiente de Container Apps con VNet y endpoints privados       |
-| La identidad de la app es dueña de las tablas               | Es la administradora de Entra ID de su servidor; podría desactivar el trigger de auditoría                                                          | Un rol que migra y otro, sin privilegios de dueño, que atiende |
-| Si Redis cae, los límites de tasa dejan pasar               | Se prefiere seguir atendiendo a bloquear a todos; los límites del WebSocket son locales y siguen funcionando                                        | Límite de respaldo en memoria por réplica                      |
-| El registro dice si un correo ya existe (409 `EMAIL_TAKEN`) | Sin verificación de correo, es la forma más clara de avisarle al usuario                                                                            | Registro con confirmación por correo                           |
-| Sin WAF delante del ingress                                 | No entra en el crédito                                                                                                                              | Azure Front Door con WAF                                       |
-| Una sola región                                             | Costo                                                                                                                                               | Réplica de lectura y despliegue en otra región                 |
+| Riesgo                                                      | Por qué se acepta                                                                                                                                                                                         | Qué lo reduciría                                               |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Postgres y Redis con endpoint público (sin VNet)            | Los endpoints privados y la VNet suben el costo fuera del crédito de estudiante. Sin un token de Entra ID del tenant no se entra, y todo va por TLS                                                       | Ambiente de Container Apps con VNet y endpoints privados       |
+| La identidad de la app es dueña de las tablas               | Es la administradora de Entra ID de su servidor; podría desactivar el trigger de auditoría                                                                                                                | Un rol que migra y otro, sin privilegios de dueño, que atiende |
+| Si Redis cae, los límites de tasa dejan pasar               | Se prefiere seguir atendiendo a bloquear a todos; los límites del WebSocket son locales y siguen funcionando                                                                                              | Límite de respaldo en memoria por réplica                      |
+| El registro dice si un correo ya existe (409 `EMAIL_TAKEN`) | Sin verificación de correo, es la forma más clara de avisarle al usuario                                                                                                                                  | Registro con confirmación por correo                           |
+| Sin WAF delante del ingress                                 | No entra en el crédito                                                                                                                                                                                    | Azure Front Door con WAF                                       |
+| Una sola región                                             | Costo                                                                                                                                                                                                     | Réplica de lectura y despliegue en otra región                 |
+| Dev y prod en el mismo ambiente de Container Apps           | Azure for Students permite uno solo ([ADR 0011](adr/0011-limites-de-azure-for-students.md)). Cada app tiene su propia identidad y solo tiene permisos sobre sus recursos; ninguna expone puertos internos | Un ambiente por cada uno (suscripción de pago)                 |

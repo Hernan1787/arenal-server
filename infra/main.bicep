@@ -1,5 +1,6 @@
 // Un ambiente completo de Arenal (dev o prod) en una sola ejecución:
-//   1. deployApp=false crea el grupo de recursos y la base (registro, Key Vault, datos…).
+//   1. deployApp=false crea el grupo de recursos y la base (registro, Key Vault, datos…), y si
+//      falta, lo compartido (rg-arenal-shared: el ambiente de Container Apps y Log Analytics).
 //   2. El pipeline genera el secreto de JWT si falta y sube la imagen.
 //   3. deployApp=true crea o actualiza la app en Container Apps con la imagen nueva.
 // Ver docs/deploy.md.
@@ -53,6 +54,23 @@ resource group 'Microsoft.Resources/resourceGroups@2025-04-01' = {
   tags: tags
 }
 
+// Las suscripciones de estudiante admiten un solo ambiente de Container Apps: dev y prod lo
+// comparten (ADR 0011). Desplegarlo otra vez con lo mismo no cambia nada.
+resource sharedGroup 'Microsoft.Resources/resourceGroups@2025-04-01' = {
+  name: 'rg-arenal-shared'
+  location: location
+  tags: union(tags, { ambiente: 'compartido' })
+}
+
+module shared 'modules/shared.bicep' = {
+  scope: sharedGroup
+  name: 'arenal-shared'
+  params: {
+    location: location
+    tags: union(tags, { ambiente: 'compartido' })
+  }
+}
+
 module base 'modules/base.bicep' = {
   scope: group
   name: 'arenal-base-${environmentName}'
@@ -66,6 +84,7 @@ module base 'modules/base.bicep' = {
     monthlyBudget: monthlyBudget
     budgetStartDate: budgetStartDate
     redisHighAvailability: redisHighAvailability
+    logsWorkspaceId: shared.outputs.logsWorkspaceId
     tags: tags
   }
 }
@@ -88,8 +107,8 @@ module app 'modules/app.bicep' = if (deployApp) {
     vaultUri: base.outputs.vaultUri
     postgresHost: base.outputs.postgresHost
     redisHost: base.outputs.redisHost
-    containerEnvId: base.outputs.containerEnvId
-    containerEnvDomain: base.outputs.containerEnvDomain
+    containerEnvId: shared.outputs.containerEnvId
+    containerEnvDomain: shared.outputs.containerEnvDomain
     appInsightsConnectionString: base.outputs.appInsightsConnectionString
     actionGroupId: base.outputs.actionGroupId
     allowedOrigins: allowedOrigins

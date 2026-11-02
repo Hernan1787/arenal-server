@@ -8,41 +8,56 @@ usa el pipeline. Un ambiente se crea completo, desde cero, con una sola ejecuci�
 ## Arquitectura
 
 ```
-Jugadores ──HTTPS / WSS──▶ Container Apps (ca-arenal-<amb>, 2+ réplicas, revisiones múltiples)
+Jugadores ──HTTPS / WSS──▶ Container Apps (ca-arenal-<amb> en cae-arenal, 2+ réplicas, revisiones múltiples)
                               │  identidad administrada id-arenal-<amb>
                               ├──▶ PostgreSQL Flexible B1ms   (token de Entra ID, TLS; sin contraseñas)
                               ├──▶ Azure Managed Redis B0     (token de Entra ID, TLS, sin agrupar; sin llaves)
                               ├──▶ Key Vault                  (llave de firma de los JWT)
                               ├──▶ Container Registry Basic   (imagen, sin usuario administrador)
                               └──▶ Application Insights       (ingesta solo con Entra ID)
-                           Log Analytics ◀── logs del ambiente de Container Apps
+                           Log Analytics (log-arenal) ◀── logs del ambiente de Container Apps
 ```
 
-| Recurso                     | Nombre                                              | Para qué                                        |
-| --------------------------- | --------------------------------------------------- | ----------------------------------------------- |
-| Grupo de recursos           | `rg-arenal-<amb>`                                   | Todo el ambiente; borrarlo borra todo           |
-| Identidad administrada      | `id-arenal-<amb>`                                   | La única identidad de la app                    |
-| Container Apps              | `cae-arenal-<amb>`, `ca-arenal-<amb>`               | El servidor; revisiones con división de tráfico |
-| PostgreSQL Flexible         | `psql-arenal-<amb>-<sufijo>`                        | Partidas, eventos, usuarios, auditoría          |
-| Azure Managed Redis         | `redis-arenal-<amb>-<sufijo>`                       | Pub/sub entre réplicas, tickets, presencia      |
-| Key Vault                   | `kv-arenal-<amb>-<sufijo>`                          | `jwt-private-key`, generada por el pipeline     |
-| Container Registry          | `acrarenal<amb><sufijo>`                            | Imágenes `arenal-server:<sha>`                  |
-| Log Analytics, App Insights | `log-arenal-<amb>`, `appi-arenal-<amb>`             | Logs, trazas y métricas                         |
-| Alertas y presupuesto       | `ag-arenal-<amb>`, `alert-…`, `budget-arenal-<amb>` | Correo al equipo                                |
+Dev y prod son dos grupos de recursos independientes (`rg-arenal-dev`, `rg-arenal-prod`), cada uno con su
+identidad, sus datos, su registro y su Key Vault. Comparten solo el **ambiente de Container Apps** y el workspace de
+**Log Analytics**, en `rg-arenal-shared`: las suscripciones de Azure for Students permiten un único ambiente de
+Container Apps ([ADR 0011](adr/0011-limites-de-azure-for-students.md)). Las dos apps viven en él con nombres y URLs
+distintas.
+
+| Recurso                | Nombre                                              | Para qué                                        |
+| ---------------------- | --------------------------------------------------- | ----------------------------------------------- |
+| Grupo de recursos      | `rg-arenal-<amb>`                                   | Todo el ambiente; borrarlo borra todo           |
+| Identidad administrada | `id-arenal-<amb>`                                   | La única identidad de la app                    |
+| Container App          | `ca-arenal-<amb>`                                   | El servidor; revisiones con división de tráfico |
+| PostgreSQL Flexible    | `psql-arenal-<amb>-<sufijo>`                        | Partidas, eventos, usuarios, auditoría          |
+| Azure Managed Redis    | `redis-arenal-<amb>-<sufijo>`                       | Pub/sub entre réplicas, tickets, presencia      |
+| Key Vault              | `kv-arenal-<amb>-<sufijo>`                          | `jwt-private-key`, generada por el pipeline     |
+| Container Registry     | `acrarenal<amb><sufijo>`                            | Imágenes `arenal-server:<sha>`                  |
+| Application Insights   | `appi-arenal-<amb>`                                 | Trazas y métricas (en el workspace compartido)  |
+| Alertas y presupuesto  | `ag-arenal-<amb>`, `alert-…`, `budget-arenal-<amb>` | Correo al equipo                                |
+
+Compartido entre los dos ambientes:
+
+| Recurso                    | Nombre                                       | Para qué                                                  |
+| -------------------------- | -------------------------------------------- | --------------------------------------------------------- |
+| Grupo de recursos          | `rg-arenal-shared`                           | Lo que usan dev y prod                                    |
+| Ambiente de Container Apps | `cae-arenal`                                 | Donde corren `ca-arenal-dev` y `ca-arenal-prod`           |
+| Log Analytics              | `log-arenal`                                 | Logs de las dos apps y telemetría de los dos App Insights |
+| Identidad del pipeline     | `id-arenal-github` (en `rg-arenal-pipeline`) | GitHub entra con OIDC; la crea `bootstrap.sh`             |
 
 ### Quién accede a qué
 
 Ninguna conexión usa contraseñas, llaves ni cadenas de conexión con credenciales.
 
-| Quién                        | Sobre qué            | Cómo                                                                             |
-| ---------------------------- | -------------------- | -------------------------------------------------------------------------------- |
-| Identidad de la app          | PostgreSQL           | Administradora de Entra ID del servidor; la contraseña es un token de 1 h        |
-| Identidad de la app          | Redis                | Política de acceso `default`; el usuario es su object ID, la contraseña un token |
-| Identidad de la app          | Key Vault            | `Key Vault Secrets User` (solo lee el secreto)                                   |
-| Identidad de la app          | Registro             | `AcrPull`                                                                        |
-| Identidad de la app          | Application Insights | `Monitoring Metrics Publisher`                                                   |
-| Pipeline (OIDC desde GitHub) | Suscripción          | `Contributor` y `Role Based Access Control Administrator`                        |
-| Pipeline                     | Key Vault, registro  | `Key Vault Secrets Officer` (crea el secreto), `AcrPush`                         |
+| Quién                                            | Sobre qué            | Cómo                                                                             |
+| ------------------------------------------------ | -------------------- | -------------------------------------------------------------------------------- |
+| Identidad de la app                              | PostgreSQL           | Administradora de Entra ID del servidor; la contraseña es un token de 1 h        |
+| Identidad de la app                              | Redis                | Política de acceso `default`; el usuario es su object ID, la contraseña un token |
+| Identidad de la app                              | Key Vault            | `Key Vault Secrets User` (solo lee el secreto)                                   |
+| Identidad de la app                              | Registro             | `AcrPull`                                                                        |
+| Identidad de la app                              | Application Insights | `Monitoring Metrics Publisher`                                                   |
+| Pipeline (`id-arenal-github`, OIDC desde GitHub) | Suscripción          | `Contributor` y `Role Based Access Control Administrator`                        |
+| Pipeline                                         | Key Vault, registro  | `Key Vault Secrets Officer` (crea el secreto), `AcrPush`                         |
 
 El único secreto del sistema es la llave privada ES256 de los JWT. La genera `deploy.sh` con `openssl` dentro del
 runner la primera vez y la escribe directo en Key Vault; Container Apps la lee con la identidad (referencia de
@@ -52,9 +67,14 @@ secreto) y el valor nunca aparece en la plantilla, en los logs ni en el repo.
 
 La hace quien es dueño de la suscripción de Azure for Students.
 
-1. Elegir una región que tenga **Azure Managed Redis Balanced B0** y **PostgreSQL Flexible B1ms**. Algunas
-   suscripciones de estudiante solo permiten ciertas regiones: se ve en
-   _Directiva > Ubicaciones permitidas_ o al intentar crear el recurso en el portal.
+1. Elegir una región permitida que tenga **Azure Managed Redis Balanced B0** y **PostgreSQL Flexible B1ms**. Las
+   suscripciones de Azure for Students solo permiten unas pocas regiones, distintas para cada persona. Se ven en
+   _Directiva > Asignaciones > Allowed resource deployment regions_, o en Cloud Shell:
+
+   ```bash
+   az policy assignment list --disable-scope-strict-match --query "[].{nombre:displayName, parametros:parameters}" -o json
+   ```
+
 2. Abrir **Azure Cloud Shell** (Bash), clonar el repo y correr:
 
    ```bash
@@ -62,9 +82,12 @@ La hace quien es dueño de la suscripción de Azure for Students.
    infra/scripts/bootstrap.sh Hernan1787/arenal-server <región> <correo-de-alertas> Hernan1787 <usuario-de-github-del-compañero>
    ```
 
-   El script registra los proveedores de recursos, crea la identidad del pipeline en Entra ID (sin contraseña: GitHub
-   entra con OIDC, con una credencial federada por environment), le da permisos sobre la suscripción, crea los
-   environments `dev` y `prod` de GitHub (prod con los revisores indicados) y guarda las variables.
+   El script revisa que la región esté permitida, registra los proveedores de recursos y crea la identidad del
+   pipeline: una identidad administrada (`id-arenal-github`) sin contraseña, con una credencial federada por
+   environment de GitHub (OIDC). Es una identidad administrada y no un registro de aplicación porque crearla solo
+   pide permisos en la suscripción, y muchos tenants universitarios no dejan registrar aplicaciones. Después le da
+   permisos sobre la suscripción, crea los environments `dev` y `prod` de GitHub (prod con los revisores indicados)
+   y guarda las variables.
 
 3. Correr **Actions > Despliegue > Run workflow** (o hacer push a `main`). La primera vez crea dev completo: tarda
    unos 15 minutos, casi todo en crear Postgres y Redis. Después espera la aprobación de prod.
@@ -73,8 +96,8 @@ La hace quien es dueño de la suscripción de Azure for Students.
 
 Cuando el CI de `main` pasa, el workflow corre `deploy.sh dev`, y después de la aprobación manual, `deploy.sh prod`:
 
-1. **Base:** crea o actualiza el grupo de recursos y todo lo que no es la app. Si el ambiente no existía, purga
-   antes un Key Vault borrado con el mismo nombre (quedan retenidos 7 días).
+1. **Base:** crea o actualiza el grupo de recursos y todo lo que no es la app, y lo compartido si falta. Si el
+   ambiente no existía, purga antes un Key Vault borrado con el mismo nombre (quedan retenidos 7 días).
 2. **Secreto:** si `jwt-private-key` no existe en Key Vault, lo genera. Si existe, no lo toca.
 3. **Imagen:** dev construye la imagen y la sube a su registro. Prod **importa la misma imagen** que pasó por dev
    (`az acr import`): lo que se aprueba es exactamente lo que se probó.
@@ -114,20 +137,27 @@ infra/scripts/destroy.sh dev --yes   # borra rg-arenal-dev y purga su Key Vault
 # Actions > Despliegue > Run workflow: lo vuelve a crear completo
 ```
 
+Lo compartido no se borra con un ambiente. Al cerrar el proyecto, después de borrar dev y prod:
+
+```bash
+infra/scripts/destroy.sh shared --yes                    # ambiente de Container Apps y Log Analytics
+az group delete -n rg-arenal-pipeline --yes              # identidad del pipeline
+```
+
 ## Costo mensual estimado
 
 Precios de lista aproximados en USD para una región de EE. UU. Pueden variar por región; conviene confirmarlos en
 la [calculadora de Azure](https://azure.microsoft.com/pricing/calculator/) y en _Cost Management_ los primeros días.
 
-| Recurso                      | Configuración                           | dev                | prod                       |
-| ---------------------------- | --------------------------------------- | ------------------ | -------------------------- |
-| PostgreSQL Flexible          | B1ms, 32 GB, sin alta disponibilidad    | ~16                | ~16                        |
-| Azure Managed Redis          | Balanced B0, sin alta disponibilidad    | ~12                | ~12                        |
-| Container Apps (consumo)     | 0.25 vCPU / 0.5 GiB por réplica         | ~0 (escala a cero) | 10 a 34 (2 réplicas fijas) |
-| Container Registry           | Basic                                   | ~5                 | ~5                         |
-| Log Analytics + App Insights | Retención 30 días, tope de 1 GB por día | ~1                 | ~2                         |
-| Key Vault                    | Standard, un secreto                    | <1                 | <1                         |
-| **Total**                    |                                         | **~34**            | **45 a 69**                |
+| Recurso                   | Configuración                        | dev                | prod                       |
+| ------------------------- | ------------------------------------ | ------------------ | -------------------------- |
+| PostgreSQL Flexible       | B1ms, 32 GB, sin alta disponibilidad | ~16                | ~16                        |
+| Azure Managed Redis       | Balanced B0, sin alta disponibilidad | ~12                | ~12                        |
+| Container Apps (consumo)  | 0.25 vCPU / 0.5 GiB por réplica      | ~0 (escala a cero) | 10 a 34 (2 réplicas fijas) |
+| Container Registry        | Basic                                | ~5                 | ~5                         |
+| App Insights (telemetría) | En el workspace compartido           | ~1                 | ~2                         |
+| Key Vault                 | Standard, un secreto                 | <1                 | <1                         |
+| **Total**                 |                                      | **~34**            | **45 a 69**                |
 
 - En Container Apps, una réplica inactiva (sin solicitudes, menos de 0.01 vCPU y menos de 1000 B/s de red) se cobra
   a una tarifa reducida; por eso el barrido corre cada 2 s en Azure. Las primeras 180 000 vCPU·s y 360 000 GiB·s de
@@ -135,6 +165,8 @@ la [calculadora de Azure](https://azure.microsoft.com/pricing/calculator/) y en 
 - **Para que alcance el crédito:** dev solo existe mientras se prueba (`destroy.sh dev --yes` al terminar; el
   pipeline lo recrea). Prod puede bajar a 1 réplica fuera de las demostraciones
   (`az containerapp update -g rg-arenal-prod -n ca-arenal-prod --min-replicas 1`).
+- Lo compartido cuesta casi nada: el ambiente de Container Apps de consumo no se cobra (se cobran las réplicas de
+  cada app) y Log Analytics tiene retención de 30 días y un tope de 1 GB por día.
 - Cada ambiente tiene un presupuesto (35 USD dev, 60 USD prod) que avisa por correo al 50 % del gasto real y cuando
   el pronóstico pasa el 100 %.
 
@@ -157,4 +189,9 @@ Todas avisan por correo al grupo de acciones `ag-arenal-<amb>`.
   como su identidad (administradora de Entra ID del servidor). Así la identidad es dueña de la base y del esquema
   `public`, y las migraciones no necesitan permisos extra. Si dos réplicas arrancan a la vez, una crea la base y la
   otra la encuentra; un candado de Postgres hace que solo una migre.
-- **Región sin Managed Redis B0:** cambiar `AZURE_LOCATION` en las variables del repo y volver a desplegar.
+- **Región sin Managed Redis B0 o sin capacidad:** Azure Managed Redis a veces falla con un `OperationFailed`
+  genérico cuando la región no tiene capacidad. Borrar lo creado (`destroy.sh dev --yes` y `destroy.sh shared
+--yes`), cambiar `AZURE_LOCATION` en las variables del repo a otra región permitida y volver a desplegar: el
+  ambiente compartido no se puede mover de región.
+- **«cannot have more than 1 Container App Environments»:** la suscripción ya tiene otro ambiente de Container Apps
+  (o uno borrado hace poco que todavía cuenta). `bootstrap.sh` avisa si encuentra alguno.

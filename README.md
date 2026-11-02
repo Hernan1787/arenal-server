@@ -154,6 +154,7 @@ En [docs/adr](docs/adr):
 8. [Administración: acciones por el dominio y auditoría de solo inserción](docs/adr/0008-administracion-y-auditoria.md)
 9. [Despliegue en Azure: Container Apps, identidad administrada y revisiones con tráfico dividido](docs/adr/0009-despliegue-en-azure.md)
 10. [Caché del estado de las partidas en cada réplica](docs/adr/0010-cache-de-estado-por-replica.md)
+11. [Ajustes por los límites de Azure for Students](docs/adr/0011-limites-de-azure-for-students.md)
 
 ## Azure
 
