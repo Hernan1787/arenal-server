@@ -1,5 +1,5 @@
-import { hostname } from 'node:os';
 import { z } from 'zod';
+import { REPLICA_ID } from './replica-id.js';
 
 const ms = (max: number, fallback: number) => z.coerce.number().int().min(0).max(max).default(fallback);
 
@@ -7,8 +7,8 @@ const ms = (max: number, fallback: number) => z.coerce.number().int().min(0).max
  * Configuración por variables de entorno. No existe ninguna variable de contraseña de base
  * de datos ni de Redis: en Azure se autentican con la identidad administrada (`PG_AUTH` y
  * `REDIS_AUTH` en `entra`); en local, docker compose corre sin credenciales. El único secreto,
- * la llave de firma de los JWT, llega desde Key Vault como variable de entorno (referencia de
- * secreto de Container Apps, leída con la misma identidad).
+ * la llave de firma de los JWT, la lee la app de Key Vault al arrancar con la misma identidad
+ * (`JWT_PRIVATE_KEY_SECRET_URI`).
  */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -16,11 +16,11 @@ const EnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(8080),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   PUBLIC_BASE_URL: z.url().optional(),
-  /** Nombre de esta réplica en la vista de conexiones. En Container Apps, el hostname es el nombre de la réplica. */
+  /** Nombre de esta réplica en la vista de conexiones y en /health/live (ver replica-id.ts). */
   REPLICA_ID: z
     .string()
     .regex(/^[A-Za-z0-9._-]{1,100}$/)
-    .default(() => hostname()),
+    .default(REPLICA_ID),
 
   PG_HOST: z.string().min(1).default('localhost'),
   PG_PORT: z.coerce.number().int().min(1).max(65535).default(5432),

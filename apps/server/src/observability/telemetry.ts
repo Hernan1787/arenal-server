@@ -8,6 +8,7 @@
  * de OpenTelemetry queda en modo no-op.
  */
 import type { IncomingMessage } from 'node:http';
+import { REPLICA_ID } from '../replica-id.js';
 
 // Las librerías de telemetría se cargan solo si hay a dónde mandar: en local ni se importan.
 let shutdown: (() => Promise<void>) | undefined;
@@ -44,7 +45,7 @@ export async function startTelemetry(env: NodeJS.ProcessEnv = process.env): Prom
     resource: resources.resourceFromAttributes({
       'service.name': 'arenal-server',
       'service.version': env['APP_VERSION'] ?? 'dev',
-      'service.instance.id': env['REPLICA_ID'] ?? env['HOSTNAME'] ?? 'local',
+      'service.instance.id': env['REPLICA_ID'] ?? REPLICA_ID,
     }),
     samplingRatio: 1,
     tracesPerSecond: 0,
