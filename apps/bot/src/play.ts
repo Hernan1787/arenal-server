@@ -119,35 +119,40 @@ async function askCard(view: PlayerView): Promise<void> {
   }
 }
 
-conn.link = await connectResilient(
-  player,
-  {
-    onSnapshot: (view) => {
-      if (view.currentPlayer !== player.id) showTable(view, who);
-      scheduleAsk();
+try {
+  conn.link = await connectResilient(
+    player,
+    {
+      onSnapshot: (view) => {
+        if (view.currentPlayer !== player.id) showTable(view, who);
+        scheduleAsk();
+      },
+      onEvent: (event, _seq, view) => {
+        const line = describe(event, player.id, who);
+        if (line !== null) console.log(line);
+        if (event.type === 'MatchEnded') {
+          void lobby(player);
+          return;
+        }
+        if (view.status === 'playing') scheduleAsk();
+      },
+      onClose: (code, reason) => {
+        console.log(`Conexión cerrada (${code}${reason ? `: ${reason}` : ''}).`);
+        process.exit(0);
+      },
     },
-    onEvent: (event, _seq, view) => {
-      const line = describe(event, player.id, who);
-      if (line !== null) console.log(line);
-      if (event.type === 'MatchEnded') {
-        void lobby(player);
-        return;
-      }
-      if (view.status === 'playing') scheduleAsk();
+    {
+      onDisconnect: (code, reason) => {
+        console.log(`\n[conexión] Se cerró (${code}${reason ? `: ${reason}` : ''}). Reconectando…`);
+      },
+      onReconnect: (attempts) => {
+        console.log(`[conexión] Reconectado (${attempts} intento${attempts === 1 ? '' : 's'}). La partida sigue.`);
+      },
     },
-    onClose: (code, reason) => {
-      console.log(`Conexión cerrada (${code}${reason ? `: ${reason}` : ''}).`);
-      process.exit(0);
-    },
-  },
-  {
-    onDisconnect: (code, reason) => {
-      console.log(`\n[conexión] Se cerró (${code}${reason ? `: ${reason}` : ''}). Reconectando…`);
-    },
-    onReconnect: (attempts) => {
-      console.log(`[conexión] Reconectado (${attempts} intento${attempts === 1 ? '' : 's'}). La partida sigue.`);
-    },
-  },
-);
+  );
+} catch (error) {
+  console.error(`No se pudo conectar a ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  process.exit(1);
+}
 console.log(`Conectado a ${url} como ${player.name}.`);
 await lobby(player);

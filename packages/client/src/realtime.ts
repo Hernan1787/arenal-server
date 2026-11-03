@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import WebSocket from 'ws';
 import { PROTOCOL_VERSION, ServerMessage, type ErrorCode } from '@arenal/contracts';
 import { applyPlayerEvent, type PlayerEvent, type PlayerView } from '@arenal/domain';
 
@@ -11,6 +12,13 @@ export interface RealtimeHandlers {
   /** Llegó un evento; `view` ya lo tiene aplicado. */
   onEvent?: (event: PlayerEvent, seq: number, view: PlayerView) => void;
   onClose?: (code: number, reason: string) => void;
+}
+
+/** El servidor manda texto; `ws` puede entregarlo como string o como bytes. */
+function toText(data: WebSocket.Data): string {
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
+  return (data instanceof ArrayBuffer ? Buffer.from(data) : data).toString('utf8');
 }
 
 /** Error que el servidor mandó en respuesta a un mensaje propio. */
@@ -39,6 +47,8 @@ interface Pending {
 export class RealtimeSession {
   private current: PlayerView | null = null;
   private lastSeq = 0;
+  /** Si el handshake terminó: un cierre antes de abrir no es una desconexión, es un rechazo. */
+  private opened = false;
   private readonly pending = new Map<string, Pending>();
   /** Eventos con un `seq` que no seguía al anterior (no debería pasar nunca). */
   gaps = 0;
@@ -51,7 +61,10 @@ export class RealtimeSession {
     private readonly ackTimeoutMs: number,
   ) {
     ws.addEventListener('message', (message) => {
-      this.onMessage(String(message.data));
+      this.onMessage(toText(message.data));
+    });
+    ws.addEventListener('open', () => {
+      this.opened = true;
     });
     ws.addEventListener('close', (event) => {
       for (const p of this.pending.values()) {
@@ -59,11 +72,16 @@ export class RealtimeSession {
         p.reject(new Error(`La conexión se cerró (${event.code})`));
       }
       this.pending.clear();
-      handlers.onClose?.(event.code, event.reason);
+      if (this.opened) handlers.onClose?.(event.code, event.reason);
     });
   }
 
-  /** Abre el WebSocket con un ticket de `POST /v1/realtime/tickets`. */
+  /**
+   * Abre el WebSocket con un ticket de `POST /v1/realtime/tickets`. Usa la librería `ws` y no el
+   * WebSocket de Node: desde Node 26, el de Node intenta WebSocket sobre HTTP/2 (CONNECT extendido)
+   * cuando el servidor lo anuncia, y el ingress de Container Apps lo anuncia pero no lo lleva hasta
+   * la app. `ws` siempre usa HTTP/1.1 con `Upgrade`, que es lo que entiende el servidor.
+   */
   static open(
     baseUrl: string,
     ticket: string,
@@ -82,9 +100,10 @@ export class RealtimeSession {
         clearTimeout(timer);
         resolve(session);
       });
-      ws.addEventListener('error', () => {
+      ws.addEventListener('error', (event) => {
         clearTimeout(timer);
-        reject(new Error('Falló el handshake del WebSocket'));
+        // ws dice qué respondió el servidor (por ejemplo «Unexpected server response: 401»).
+        reject(new Error(`Falló el handshake del WebSocket: ${event.message}`));
       });
     });
   }

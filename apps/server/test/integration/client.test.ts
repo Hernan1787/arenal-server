@@ -169,4 +169,17 @@ describe('cliente de Arenal contra el servidor', () => {
       link.close();
     }
   });
+
+  it('un ticket inválido falla en el handshake con el código del servidor, sin contar como desconexión', async () => {
+    let closed = false;
+    await expect(
+      RealtimeSession.open(`http://${h.baseUrl}`, 'ticket-que-no-existe', {
+        onClose: () => {
+          closed = true;
+        },
+      }),
+    ).rejects.toThrow(/401/);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(closed).toBe(false);
+  });
 });

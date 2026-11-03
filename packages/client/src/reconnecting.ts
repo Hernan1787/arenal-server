@@ -45,8 +45,19 @@ export class ReconnectingSession {
     options: ReconnectOptions = {},
   ): Promise<ReconnectingSession> {
     const reconnecting = new ReconnectingSession(api, handlers, options);
-    reconnecting.session = await reconnecting.connect();
-    return reconnecting;
+    // La primera conexión también se reintenta: una réplica que se está apagando la rechaza con 503.
+    const maxAttempts = options.maxAttempts ?? 10;
+    let delay = options.initialDelayMs ?? 250;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        reconnecting.session = await reconnecting.connect();
+        return reconnecting;
+      } catch (error) {
+        if (attempt >= maxAttempts) throw error;
+        await sleep(delay + Math.random() * delay);
+        delay = Math.min(delay * 2, options.maxDelayMs ?? 5_000);
+      }
+    }
   }
 
   /** La conexión vigente. Cambia en cada reconexión: no hay que guardarla. */
