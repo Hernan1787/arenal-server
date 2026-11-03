@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import type { IncomingMessage } from 'node:http';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import fastifyStatic from '@fastify/static';
 import rateLimit, { type FastifyRateLimitStoreCtor } from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
@@ -44,6 +46,14 @@ export interface AppOptions {
   readonly rateLimits?: RateLimits;
   /** Contadores compartidos entre réplicas (Redis). Sin él, cada réplica cuenta por su cuenta. */
   readonly rateLimitStore?: FastifyRateLimitStoreCtor;
+  /** Carpeta con la web compilada (apps/web/dist). Sin ella, la raíz no sirve nada. */
+  readonly webRoot?: string;
+}
+
+/** Archivos de la web: la página, sus recursos y el ícono. Todo lo demás es la API. */
+function isWebPath(url: string | undefined): boolean {
+  const path = (url ?? '/').split('?')[0] ?? '/';
+  return path === '/' || path === '/index.html' || path === '/favicon.svg' || path.startsWith('/assets/');
 }
 
 const BODY_LIMIT_BYTES = 16 * 1024;
@@ -103,11 +113,45 @@ export async function buildApp(options: AppOptions): Promise<FastifyInstance> {
     void jsonParser(request, text, done);
   });
 
+  // La API no carga nada (default-src 'none'). La página web solo carga sus propios archivos y abre
+  // el WebSocket contra el mismo servidor; ningún script, estilo ni fuente de otro origen.
+  const webRoot = options.webRoot;
+  const forWeb =
+    (value: (request: IncomingMessage) => string) =>
+    (request: IncomingMessage): string =>
+      webRoot !== undefined && isWebPath(request.url) ? value(request) : "'none'";
+  const self = (): string => "'self'";
   await app.register(helmet, {
     hsts: { maxAge: 31_536_000, includeSubDomains: true },
-    contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'none'"],
+        scriptSrc: [forWeb(self)],
+        styleSrc: [forWeb(self)],
+        fontSrc: [forWeb(self)],
+        imgSrc: [forWeb(() => "'self' data:")],
+        connectSrc: [forWeb((request) => `'self' wss://${request.headers.host ?? ''}`)],
+        baseUri: ["'none'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"],
+      },
+    },
     crossOriginResourcePolicy: { policy: 'same-site' },
   });
+
+  if (webRoot !== undefined) {
+    // wildcard: false registra una ruta por archivo al arrancar; lo demás sigue siendo un 404 de la API.
+    await app.register(fastifyStatic, {
+      root: webRoot,
+      wildcard: false,
+      index: 'index.html',
+      cacheControl: false,
+      setHeaders: (res, path) => {
+        // Los recursos llevan un hash en el nombre; la página se revisa siempre.
+        res.header('cache-control', path.includes('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
+  }
 
   await app.register(cors, {
     origin: [...(options.allowedOrigins ?? [])],

@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { buildApp, type HealthCheck, type Lifecycle } from '../src/app.js';
 import { ConfigError, loadConfig } from '../src/config.js';
@@ -166,5 +169,33 @@ describe('nombre de la réplica', () => {
     expect(replicaIdFrom({ CONTAINER_APP_REPLICA_NAME: 'ca-arenal-prod--abc-7f9' })).toBe('ca-arenal-prod--abc-7f9');
     expect(replicaIdFrom({}, 'a1b2c3')).toMatch(/-a1b2c3$/);
     expect(replicaIdFrom({})).not.toBe(replicaIdFrom({}));
+  });
+});
+
+describe('la web', () => {
+  it('se sirve en la raíz con una CSP que solo permite sus propios archivos; la API sigue sin cargar nada', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'arenal-web-'));
+    await mkdir(join(root, 'assets'));
+    await writeFile(join(root, 'index.html'), '<!doctype html><title>Arenal</title>');
+    await writeFile(join(root, 'assets', 'app-123.js'), 'console.log(1)');
+    const instance = await buildApp({ version: 'test', checks: {}, lifecycle: { draining: false }, webRoot: root });
+    close = () => instance.close();
+
+    const page = await instance.inject({ url: '/', headers: { host: 'arenal.ejemplo' } });
+    expect(page.statusCode).toBe(200);
+    expect(page.headers['content-type']).toContain('text/html');
+    expect(page.headers['cache-control']).toBe('no-cache');
+    const csp = String(page.headers['content-security-policy']);
+    expect(csp).toContain("script-src 'self'");
+    expect(csp).toContain("connect-src 'self' wss://arenal.ejemplo");
+    expect(csp).toContain("frame-ancestors 'none'");
+
+    const asset = await instance.inject('/assets/app-123.js');
+    expect(asset.statusCode).toBe(200);
+    expect(asset.headers['cache-control']).toContain('immutable');
+
+    const api = await instance.inject('/health/live');
+    expect(String(api.headers['content-security-policy'])).toContain("script-src 'none'");
+    expect((await instance.inject('/no-existe')).statusCode).toBe(404);
   });
 });

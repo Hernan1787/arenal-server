@@ -26,6 +26,7 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Infraestructura en Azure (Bicep) y despliegue  | Desplegado en Azure for Students (Container Apps en modo Express, North Central US): identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback a la imagen anterior |
 | Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                                                                                      |
 | Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`); los dos reconectan solos si su réplica se apaga y siguen la misma partida                                |
+| Interfaz web                                   | Juego completo en el navegador, servido por el mismo servidor en la raíz: cola, salas privadas, mesa con el volcán, reconexión visible y fin de partida                                         |
 | Prueba de carga                                | Partidas reales por WebSocket. En local cumple p95 < 200 ms hasta 400 partidas simultáneas; la caché de estado subió el punto de quiebre de 300 a 500 ([docs/load-test.md](docs/load-test.md))  |
 
 URL pública en Azure (producción): <https://ca-arenal-prod.bluebay-50111a05.northcentralus.azurecontainerapps.io>, con la
@@ -69,9 +70,15 @@ pnpm dev               # servidor con recarga en http://localhost:8080
 `pnpm install` activa un hook de pre-commit que corre [gitleaks](https://github.com/gitleaks/gitleaks) si está
 instalado. El CI lo corre siempre.
 
-## Jugar: bot y cliente de prueba
+## Jugar: la web, el bot y el cliente de prueba
 
-Con el servidor corriendo (`docker compose up` o `pnpm dev`):
+**En el navegador:** el mismo servidor sirve la web en la raíz, en Azure
+(<https://ca-arenal-prod.bluebay-50111a05.northcentralus.azurecontainerapps.io>) y en local con `docker compose up`
+(<http://localhost:8080>). Se escribe un nombre y se busca partida; para jugar solo, abre otra pestaña o trae bots.
+En desarrollo, `pnpm --filter @arenal/web dev` levanta la web con recarga en <http://localhost:5173> contra el
+servidor local. Diseño y decisiones: [ADR 0012](docs/adr/0012-interfaz-web.md).
+
+**En la terminal,** con el servidor corriendo (`docker compose up` o `pnpm dev`):
 
 ```bash
 pnpm bot --bots 4 --games 3            # 4 bots juegan 3 partidas por la cola rápida
@@ -105,8 +112,9 @@ la misma transacción; la tabla rechaza cambios y borrados. Detalle en el
 ```
 packages/domain      motor de reglas puro: decide, evolve, viewFor, projectEvent
 packages/contracts   esquemas Zod del protocolo; genera generated/asyncapi.yaml y guarda openapi.json
-packages/client      cliente REST y WebSocket (lo usan el bot, el cliente de prueba y la prueba de carga)
+packages/client      cliente REST y WebSocket (lo usan la web, el bot, el cliente de prueba y la prueba de carga)
 apps/bot             bot, cliente en la terminal y prueba de carga
+apps/web             interfaz web (Vite + TypeScript, sin framework); la sirve el servidor en la raíz
 apps/server
   src/auth           contraseñas (Argon2id), JWT y refresh tokens
   src/lobby          salas y cola de emparejamiento
@@ -158,6 +166,7 @@ En [docs/adr](docs/adr):
 9. [Despliegue en Azure: Container Apps, identidad administrada y revisiones con tráfico dividido](docs/adr/0009-despliegue-en-azure.md)
 10. [Caché del estado de las partidas en cada réplica](docs/adr/0010-cache-de-estado-por-replica.md)
 11. [Ajustes por los límites de Azure for Students](docs/adr/0011-limites-de-azure-for-students.md)
+12. [Interfaz web servida por el mismo servidor](docs/adr/0012-interfaz-web.md)
 
 ## Azure
 

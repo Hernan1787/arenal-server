@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arenal</title>
+    <meta name="description" content="Juego de cartas por turnos: echen piedras al volcán sin hacerlo estallar." />
+    <meta name="theme-color" content="#120d1c" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body data-screen="home">
+    <canvas id="magma" class="magma" aria-hidden="true"></canvas>
+    <header class="topbar">
+      <a class="topbar__logo" href="/">Arenal</a>
+      <span id="net" class="net" role="status" data-status="off"></span>
+      <span id="server" class="server-version"></span>
+    </header>
+    <main id="app"></main>
+    <div id="overlay"></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="flash" class="flash" aria-hidden="true"></div>
+    <div class="crt" aria-hidden="true"></div>
+  </body>
+</html>

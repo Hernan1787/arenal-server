@@ -8,45 +8,12 @@
  * réplica se apaga (por ejemplo al publicar una revisión nueva), reconecta sola y sigue jugando.
  */
 import { createInterface } from 'node:readline/promises';
-import { RejectedError, type ReconnectingSession } from '@arenal/client';
-import type { Card, PlayerEvent, PlayerView } from '@arenal/domain';
+import { cardName, describeEvent, RejectedError, type ReconnectingSession } from '@arenal/client';
+import type { PlayerView } from '@arenal/domain';
 import { arg, connectResilient, createPlayer, type Player } from './players.js';
 
 const url = arg('url', 'http://localhost:8080');
 const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-const cardName = (card: Card): string =>
-  card.kind === 'stone' ? `Piedra ${card.value}` : card.kind === 'cool' ? 'Enfriar' : 'Sismógrafo';
-
-function describe(event: PlayerEvent, me: string, who: (id: string) => string): string | null {
-  switch (event.type) {
-    case 'MatchStarted':
-      return `Empieza la partida. Orden: ${event.playerOrder.map(who).join(', ')}`;
-    case 'RoundStarted':
-      return `— Ronda ${event.round}: el volcán tiene un límite nuevo (secreto) —`;
-    case 'CardPlayed':
-      return `${who(event.playerId)} juega ${cardName(event.card)}${event.auto ? ' (se le venció el turno)' : ''}. Presión: ${event.pressureAfter}`;
-    case 'SeismoRead':
-      return event.playerId === me && event.near !== undefined
-        ? `Tu sismógrafo dice: ${event.near ? 'CERCA del límite' : 'lejos del límite'}`
-        : `${who(event.playerId)} consultó el sismógrafo`;
-    case 'Eruption':
-      return `¡Erupción! El límite era ${event.limit}. ${who(event.playerId)} queda con ${event.livesLeft} vida(s)`;
-    case 'PlayerEliminated':
-      return `${who(event.playerId)} queda eliminado (${event.reason === 'abandon' ? 'abandono' : 'sin vidas'})`;
-    case 'MatchEnded': {
-      const r = event.result;
-      if (r.kind === 'winner') return `Fin de la partida. Gana ${who(r.winner)}`;
-      if (r.kind === 'draw') return `Fin de la partida. Empate entre ${r.players.map(who).join(', ')}`;
-      return 'Un administrador terminó la partida';
-    }
-    case 'DeckShuffled':
-    case 'DiscardReshuffled':
-    case 'CardDrawn':
-    case 'TurnStarted':
-      return null;
-  }
-}
 
 function showTable(view: PlayerView, who: (id: string) => string): void {
   const players = view.players
@@ -128,7 +95,7 @@ try {
         scheduleAsk();
       },
       onEvent: (event, _seq, view) => {
-        const line = describe(event, player.id, who);
+        const line = describeEvent(event, player.id, who);
         if (line !== null) console.log(line);
         if (event.type === 'MatchEnded') {
           void lobby(player);

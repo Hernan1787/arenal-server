@@ -15,11 +15,26 @@ export interface Session {
   readonly refreshToken: string;
 }
 
+export interface RoomMember {
+  readonly userId: string;
+  readonly displayName: string;
+  readonly ready: boolean;
+}
+
 export interface Room {
   readonly id: string;
   readonly inviteCode: string | null;
   readonly status: 'waiting' | 'started' | 'closed';
   readonly matchId: string | null;
+  readonly capacity?: number;
+  readonly hostId?: string;
+  readonly members?: readonly RoomMember[];
+}
+
+export interface MatchSummary {
+  readonly matchId: string;
+  readonly status: 'playing' | 'finished' | 'aborted';
+  readonly players: readonly { readonly id: string; readonly displayName: string }[];
 }
 
 export type TicketStatus =
@@ -84,12 +99,30 @@ export class ArenalApi {
     return this.request('PUT', `/v1/rooms/${roomId}/ready`, { ready });
   }
 
+  getRoom(roomId: string): Promise<Room> {
+    return this.request('GET', `/v1/rooms/${roomId}`);
+  }
+
+  async leaveRoom(roomId: string): Promise<void> {
+    await this.request('POST', `/v1/rooms/${roomId}/leave`);
+  }
+
   enqueue(): Promise<TicketStatus> {
     return this.request('POST', '/v1/matchmaking/ticket');
   }
 
   ticketStatus(): Promise<TicketStatus> {
     return this.request('GET', '/v1/matchmaking/ticket');
+  }
+
+  async leaveQueue(): Promise<void> {
+    await this.request('DELETE', '/v1/matchmaking/ticket');
+  }
+
+  /** Mis partidas, de la más nueva a la más vieja (trae los nombres de los jugadores). */
+  async myMatches(limit = 5): Promise<readonly MatchSummary[]> {
+    const page = await this.request<{ items: MatchSummary[] }>('GET', `/v1/me/matches?limit=${limit}`);
+    return page.items;
   }
 
   /** Ticket de un solo uso para abrir el WebSocket. */

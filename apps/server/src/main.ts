@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { buildApp, createLogger, type Lifecycle } from './app.js';
 import { systemClock } from './clock.js';
 import { loadConfig } from './config.js';
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
   const server = await buildApp({
     version: VERSION,
     replica: config.REPLICA_ID,
+    ...(config.WEB_ROOT !== undefined && existsSync(config.WEB_ROOT) && { webRoot: config.WEB_ROOT }),
     lifecycle,
     logger: log,
     allowedOrigins: config.ALLOWED_ORIGINS,
