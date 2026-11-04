@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-import WebSocket from 'ws';
 import { PROTOCOL_VERSION, ServerMessage, type ErrorCode } from '@arenal/contracts';
 import { applyPlayerEvent, type PlayerEvent, type PlayerView } from '@arenal/domain';
 
@@ -14,11 +12,47 @@ export interface RealtimeHandlers {
   onClose?: (code: number, reason: string) => void;
 }
 
-/** El servidor manda texto; `ws` puede entregarlo como string o como bytes. */
-function toText(data: WebSocket.Data): string {
+/**
+ * Lo único que la sesión usa de un WebSocket. Lo cumplen el del navegador y el de la librería `ws`
+ * (que usa Node, ver index.ts); así el mismo cliente sirve en los dos lados.
+ */
+export interface WebSocketLike {
+  addEventListener(type: 'open', listener: () => void): void;
+  addEventListener(type: 'message', listener: (event: { readonly data: unknown }) => void): void;
+  addEventListener(type: 'close', listener: (event: { readonly code: number; readonly reason: string }) => void): void;
+  addEventListener(type: 'error', listener: (event: { readonly message?: string }) => void): void;
+  send(data: string): void;
+  close(code?: number): void;
+}
+
+export type WebSocketFactory = (url: string) => WebSocketLike;
+
+// En el navegador, el WebSocket nativo. En Node, index.ts lo cambia por el de `ws`.
+let createWebSocket: WebSocketFactory = (url) => new WebSocket(url);
+
+/** Cambia la implementación de WebSocket que usan todas las sesiones nuevas. */
+export function useWebSocket(factory: WebSocketFactory): void {
+  createWebSocket = factory;
+}
+
+const newId = (): string => globalThis.crypto.randomUUID();
+
+const asBytes = (part: unknown): Uint8Array =>
+  part instanceof ArrayBuffer ? new Uint8Array(part) : (part as Uint8Array);
+
+/** El servidor manda texto; según la implementación llega como string o como bytes. */
+function toText(data: unknown): string {
   if (typeof data === 'string') return data;
-  if (Array.isArray(data)) return Buffer.concat(data).toString('utf8');
-  return (data instanceof ArrayBuffer ? Buffer.from(data) : data).toString('utf8');
+  const decoder = new TextDecoder();
+  if (!Array.isArray(data)) return decoder.decode(asBytes(data));
+  const parts = data.map(asBytes);
+  const joined = new Uint8Array(parts.reduce((n, part) => n + part.length, 0));
+  let offset = 0;
+  for (const part of parts) {
+    joined.set(part, offset);
+    offset += part.length;
+  }
+  return decoder.decode(joined);
 }
 
 /** Error que el servidor mandó en respuesta a un mensaje propio. */
@@ -36,7 +70,7 @@ export class RejectedError extends Error {
 interface Pending {
   resolve: (ack: Ack) => void;
   reject: (error: Error) => void;
-  timer: NodeJS.Timeout;
+  timer: ReturnType<typeof setTimeout>;
 }
 
 /**
@@ -56,7 +90,7 @@ export class RealtimeSession {
   invalidMessages = 0;
 
   private constructor(
-    private readonly ws: WebSocket,
+    private readonly ws: WebSocketLike,
     private readonly handlers: RealtimeHandlers,
     private readonly ackTimeoutMs: number,
   ) {
@@ -77,10 +111,10 @@ export class RealtimeSession {
   }
 
   /**
-   * Abre el WebSocket con un ticket de `POST /v1/realtime/tickets`. Usa la librería `ws` y no el
-   * WebSocket de Node: desde Node 26, el de Node intenta WebSocket sobre HTTP/2 (CONNECT extendido)
-   * cuando el servidor lo anuncia, y el ingress de Container Apps lo anuncia pero no lo lleva hasta
-   * la app. `ws` siempre usa HTTP/1.1 con `Upgrade`, que es lo que entiende el servidor.
+   * Abre el WebSocket con un ticket de `POST /v1/realtime/tickets`. En Node usa la librería `ws`:
+   * desde Node 26, el WebSocket incluido intenta WebSocket sobre HTTP/2 (CONNECT extendido) cuando
+   * el servidor lo anuncia, y el ingress de Container Apps lo anuncia pero no lo lleva hasta la app.
+   * `ws` y los navegadores usan HTTP/1.1 con `Upgrade`, que es lo que entiende el servidor.
    */
   static open(
     baseUrl: string,
@@ -90,7 +124,7 @@ export class RealtimeSession {
   ): Promise<RealtimeSession> {
     const url = `${baseUrl.replace(/^http/, 'ws')}/v1/realtime?ticket=${encodeURIComponent(ticket)}`;
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(url);
+      const ws = createWebSocket(url);
       const session = new RealtimeSession(ws, handlers, options.ackTimeoutMs ?? 10_000);
       const timer = setTimeout(() => {
         ws.close();
@@ -102,8 +136,9 @@ export class RealtimeSession {
       });
       ws.addEventListener('error', (event) => {
         clearTimeout(timer);
-        // ws dice qué respondió el servidor (por ejemplo «Unexpected server response: 401»).
-        reject(new Error(`Falló el handshake del WebSocket: ${event.message}`));
+        // `ws` dice qué respondió el servidor (por ejemplo «Unexpected server response: 401»);
+        // el navegador no da detalles.
+        reject(new Error(`Falló el handshake del WebSocket${event.message ? `: ${event.message}` : ''}`));
       });
     });
   }
@@ -117,7 +152,7 @@ export class RealtimeSession {
   }
 
   /** Juega una carta sobre la versión que conoce el cliente. Resuelve con el `ack`. */
-  playCard(cardId: string, moveId: string = randomUUID()): Promise<Ack> {
+  playCard(cardId: string, moveId: string = newId()): Promise<Ack> {
     const view = this.requireView();
     return this.send(moveId, {
       v: PROTOCOL_VERSION,
@@ -131,7 +166,7 @@ export class RealtimeSession {
 
   leaveMatch(): Promise<Ack> {
     const view = this.requireView();
-    const id = randomUUID();
+    const id = newId();
     return this.send(id, { v: PROTOCOL_VERSION, type: 'leave_match', id, matchId: view.matchId });
   }
 
@@ -142,7 +177,7 @@ export class RealtimeSession {
       JSON.stringify({
         v: PROTOCOL_VERSION,
         type: 'resume',
-        id: randomUUID(),
+        id: newId(),
         matchId: view.matchId,
         lastSeq: this.lastSeq,
       }),

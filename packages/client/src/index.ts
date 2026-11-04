@@ -1,4 +1,8 @@
-export { ApiError, ArenalApi, type Room, type Session, type TicketStatus } from './api.js';
-export { RealtimeSession, RejectedError, type Ack, type RealtimeHandlers, type ServerError } from './realtime.js';
-export { ReconnectingSession, type ReconnectOptions } from './reconnecting.js';
-export { chooseCard, isMyTurn } from './strategy.js';
+// Entrada para Node (bot, cliente de terminal, prueba de carga y pruebas): el WebSocket de la
+// librería `ws`, que siempre usa HTTP/1.1 (ver RealtimeSession.open).
+import WebSocket from 'ws';
+import { useWebSocket } from './realtime.js';
+
+useWebSocket((url) => new WebSocket(url));
+
+export * from './shared.js';

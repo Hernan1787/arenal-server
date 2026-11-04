@@ -1,0 +1,1317 @@
+/* Arenal: noche de volcán. Fondo de magma pixelado, paneles de basalto con borde de tinta,
+   botones gruesos que se hunden al tocarlos y una sola tipografía pixelada (Jersey 15, de un solo
+   peso: la jerarquía sale del tamaño y del color, nunca de negritas sintéticas). */
+
+:root {
+  --night: #120d1c;
+  --basalt: #1f1830;
+  --rock: #3a2f4f;
+  --steam: #b3a7cb;
+  --mist: #f0eaf8;
+  --lava: #ff4f1f;
+  --lava-deep: #b8240e;
+  --ember: #ffc03a;
+  --jungle: #46d98a;
+  --tide: #6fe0d6;
+  --stone: #cfc8de;
+  --ink: #0a0710;
+  --heart: #ff4f6a;
+  --font: 'Jersey 15', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100dvh;
+}
+
+body {
+  background: var(--night);
+  color: var(--mist);
+  font-family: var(--font);
+  font-size: 21px;
+  font-weight: 400;
+  font-synthesis: none;
+  line-height: 1.3;
+  overflow-x: hidden;
+  -webkit-font-smoothing: none;
+}
+
+h1,
+h2,
+p {
+  margin: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--ember);
+  outline-offset: 3px;
+}
+
+/* --- Fondo, pantalla vieja y destello ----------------------------------------------------- */
+
+.magma {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  image-rendering: pixelated;
+}
+
+.magma--fallback {
+  background:
+    radial-gradient(ellipse at 50% 120%, rgb(255 79 31 / 0.35), transparent 55%), linear-gradient(var(--night), #2a1240);
+}
+
+.crt {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(to bottom, rgb(0 0 0 / 0.16) 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse at center, transparent 62%, rgb(0 0 0 / 0.5));
+}
+
+.flash {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  background: var(--lava);
+  opacity: 0;
+}
+
+.flash--on {
+  animation: flash 650ms ease-out;
+}
+
+@keyframes flash {
+  0% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* --- Barra superior ------------------------------------------------------------------------ */
+
+.topbar {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 20px;
+}
+
+.topbar__logo {
+  margin-right: auto;
+  color: var(--ember);
+  font-size: 32px;
+  text-decoration: none;
+  text-shadow:
+    0 2px 0 var(--lava),
+    0 4px 0 var(--ink);
+}
+
+[data-screen='home'] .topbar__logo {
+  visibility: hidden;
+}
+
+.net {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: rgb(18 13 28 / 0.85);
+  font-size: 19px;
+}
+
+.net__dot {
+  width: 10px;
+  height: 10px;
+  background: var(--steam);
+}
+
+.net[data-status='on'] .net__dot {
+  background: var(--jungle);
+}
+
+.net[data-status='reconnecting'] .net__dot {
+  background: var(--ember);
+  animation: blink 600ms steps(2) infinite;
+}
+
+.net[data-status='off'] .net__dot {
+  background: var(--lava);
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.server-version {
+  color: var(--steam);
+  font-size: 18px;
+}
+
+#app {
+  min-height: 100dvh;
+  padding-top: 68px;
+}
+
+/* --- Piezas comunes ------------------------------------------------------------------------- */
+
+.panel {
+  background: rgb(18 13 28 / 0.84);
+  border: 3px solid var(--ink);
+  border-radius: 10px;
+  box-shadow:
+    inset 0 0 0 3px var(--rock),
+    0 6px 0 var(--ink);
+  padding: 20px;
+}
+
+.panel__title {
+  color: var(--steam);
+  font-size: 22px;
+}
+
+.btn {
+  font: inherit;
+  font-size: 25px;
+  padding: 8px 22px;
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--stone);
+  box-shadow: 0 5px 0 var(--ink);
+  cursor: pointer;
+  transition:
+    transform 80ms,
+    box-shadow 80ms;
+}
+
+.btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+
+.btn--lava {
+  background: var(--lava);
+}
+
+.btn--lava:hover {
+  background: #ff6a3c;
+}
+
+.btn--stone:hover {
+  background: #ddd7ea;
+}
+
+.btn--ghost {
+  background: rgb(31 24 48 / 0.9);
+  color: var(--mist);
+  box-shadow:
+    inset 0 0 0 2px var(--rock),
+    0 5px 0 var(--ink);
+}
+
+.btn--ghost:hover {
+  background: var(--rock);
+}
+
+.heart {
+  width: 21px;
+  height: 18px;
+  fill: var(--heart);
+}
+
+.heart--empty {
+  fill: var(--rock);
+}
+
+.hint {
+  color: var(--steam);
+  font-size: 20px;
+}
+
+.command {
+  display: block;
+  margin-top: 6px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--mist);
+  background: var(--basalt);
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 19px;
+}
+
+/* --- Inicio --------------------------------------------------------------------------------- */
+
+.home {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  grid-template-areas:
+    'brand form'
+    'rules form';
+  gap: 28px 48px;
+  align-items: start;
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 7vh 24px 48px;
+}
+
+.home__brand {
+  grid-area: brand;
+}
+
+.logo {
+  font-size: clamp(84px, 12vw, 168px);
+  line-height: 0.9;
+  color: var(--ember);
+  letter-spacing: 2px;
+  text-shadow:
+    0 5px 0 var(--lava),
+    0 10px 0 var(--lava-deep),
+    0 15px 0 var(--ink);
+}
+
+.home__tagline {
+  margin-top: 36px;
+  max-width: 26ch;
+  font-size: 30px;
+  line-height: 1.15;
+  color: var(--mist);
+}
+
+.home__form {
+  grid-area: form;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.field__label {
+  color: var(--steam);
+  font-size: 21px;
+}
+
+.field__input {
+  font: inherit;
+  font-size: 26px;
+  width: 100%;
+  padding: 10px 12px;
+  color: var(--mist);
+  background: var(--basalt);
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 2px var(--rock);
+}
+
+.field__input--code {
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  min-width: 0;
+}
+
+.home__join {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.home__join .btn {
+  flex: none;
+  font-size: 21px;
+}
+
+.form-error {
+  min-height: 1.4em;
+  color: #ff9478;
+  font-size: 20px;
+}
+
+.rules {
+  grid-area: rules;
+  max-width: 560px;
+  color: var(--mist);
+}
+
+.rules summary {
+  cursor: pointer;
+  color: var(--ember);
+  font-size: 25px;
+}
+
+.rules ul {
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.rules li {
+  position: relative;
+  padding-left: 22px;
+  font-size: 21px;
+}
+
+.rules li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 9px;
+  height: 9px;
+  background: var(--lava);
+}
+
+/* --- Cola y sala ---------------------------------------------------------------------------- */
+
+.waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 620px;
+  margin: 10vh auto 0;
+}
+
+.waiting__title {
+  color: var(--ember);
+  font-size: 52px;
+  text-shadow: 0 3px 0 var(--ink);
+}
+
+.waiting > .btn,
+.waiting__actions {
+  align-self: flex-start;
+}
+
+.waiting__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.invite {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.invite__code {
+  font-size: 52px;
+  letter-spacing: 6px;
+  color: var(--ember);
+  background: var(--basalt);
+  padding: 4px 14px;
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+}
+
+.members {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.member {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--basalt);
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+}
+
+.member__state {
+  color: var(--steam);
+}
+
+.member--ready .member__state {
+  color: var(--jungle);
+}
+
+/* --- Mesa ----------------------------------------------------------------------------------- */
+
+.table {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 290px;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    'info rivals log'
+    'info stage log'
+    'hand hand hand';
+  gap: 14px 20px;
+  height: calc(100dvh - 68px);
+  padding: 0 20px 14px;
+}
+
+.table__rivals {
+  grid-area: rivals;
+}
+
+.rivals {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rival {
+  display: grid;
+  gap: 4px;
+  min-width: 170px;
+  padding: 8px 12px;
+  background: rgb(31 24 48 / 0.92);
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  box-shadow: 0 4px 0 var(--ink);
+  transition:
+    transform 150ms,
+    box-shadow 150ms;
+}
+
+.rival--turn {
+  transform: translateY(-3px);
+  box-shadow:
+    0 0 0 3px var(--ember),
+    0 7px 0 var(--ink);
+}
+
+.rival--out {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+
+.rival__name {
+  font-size: 24px;
+}
+
+.rival__lives,
+.me__lives {
+  display: flex;
+  gap: 4px;
+}
+
+.rival__cards {
+  display: flex;
+  align-items: center;
+  padding-left: 2px;
+}
+
+.mini-back {
+  width: 13px;
+  height: 18px;
+  margin-right: -5px;
+  border: 2px solid var(--ink);
+  border-radius: 3px;
+  background: repeating-linear-gradient(45deg, var(--lava-deep) 0 3px, var(--rock) 3px 6px);
+}
+
+.rival__count {
+  margin-left: 12px;
+  color: var(--steam);
+  font-size: 18px;
+}
+
+.rival__tag {
+  justify-self: start;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--ember);
+  font-size: 17px;
+}
+
+.rival__tag--out {
+  background: var(--steam);
+}
+
+.table__info {
+  grid-area: info;
+  align-self: start;
+}
+
+.info {
+  display: grid;
+  margin: 0;
+}
+
+.info__label {
+  color: var(--steam);
+  font-size: 19px;
+}
+
+.info__value {
+  margin: 0 0 10px;
+  font-size: 30px;
+  line-height: 1.1;
+}
+
+.info__value--near {
+  color: var(--lava);
+}
+
+.info__value--far {
+  color: var(--jungle);
+}
+
+/* El escenario: turno, presión y el volcán. */
+.stage {
+  grid-area: stage;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 0;
+}
+
+.turn {
+  padding: 4px 16px;
+  border-radius: 6px;
+  background: rgb(10 7 16 / 0.6);
+  font-size: 32px;
+}
+
+.turn--mine {
+  color: var(--ink);
+  background: var(--ember);
+  box-shadow: 0 4px 0 var(--ink);
+}
+
+.timer {
+  width: min(360px, 80%);
+  height: 10px;
+  border: 2px solid var(--ink);
+  border-radius: 4px;
+  background: rgb(10 7 16 / 0.6);
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.timer--running {
+  visibility: visible;
+}
+
+.timer__bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--lava), var(--ember));
+  transform-origin: left;
+}
+
+.timer--running .timer__bar {
+  animation: drain var(--turn-ms, 30s) linear forwards;
+}
+
+@keyframes drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+/* La presión va a la izquierda del volcán y la carta jugada a la derecha: el volcán usa todo el alto. */
+.pressure {
+  position: absolute;
+  left: 3%;
+  top: 50%;
+  translate: 0 -50%;
+  display: grid;
+  justify-items: start;
+}
+
+.pressure__value {
+  font-size: clamp(64px, 8vw, 112px);
+  line-height: 1;
+  color: var(--ember);
+  text-shadow:
+    0 4px 0 var(--lava-deep),
+    0 8px 0 var(--ink);
+}
+
+.pressure__value[data-level='warm'] {
+  color: #ff9a3a;
+}
+
+.pressure__value[data-level='hot'] {
+  color: var(--lava);
+  text-shadow:
+    0 4px 0 #6d1206,
+    0 8px 0 var(--ink);
+}
+
+.pressure__value.pop {
+  animation: pop 260ms cubic-bezier(0.3, 1.8, 0.5, 1);
+}
+
+@keyframes pop {
+  from {
+    transform: scale(1.35);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+.pressure__label {
+  color: var(--steam);
+  font-size: 24px;
+}
+
+.volcano {
+  flex: 1 1 0;
+  width: 100%;
+  min-height: 140px;
+  overflow: visible;
+}
+
+.v-glow {
+  fill: url(#v-glow);
+  transition: opacity 600ms;
+}
+
+.v-cone {
+  fill: url(#v-rock);
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+.v-strata {
+  fill: none;
+  stroke: #4f4270;
+  stroke-width: 4;
+}
+
+.v-crater {
+  fill: #5a2a35;
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+.v-vent {
+  fill: var(--night);
+  stroke: var(--ink);
+  stroke-width: 4;
+}
+
+.v-band {
+  fill: rgb(255 79 31 / 0.16);
+  stroke: var(--lava);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.v-magma {
+  fill: url(#v-lava);
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transition: transform 500ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.v-last-line {
+  stroke: var(--ember);
+  stroke-width: 4;
+}
+
+.v-tick {
+  stroke: var(--steam);
+  stroke-width: 3;
+}
+
+.v-tick-label {
+  fill: var(--steam);
+  font-family: var(--font);
+  font-size: 21px;
+}
+
+/* La carta jugada sube, se queda un momento y cae al cráter. */
+.stage__played {
+  position: absolute;
+  right: 2%;
+  top: 52%;
+  translate: 0 -50%;
+  pointer-events: none;
+}
+
+.card--played {
+  animation: played 1300ms ease-in forwards;
+}
+
+@keyframes played {
+  0% {
+    transform: translateY(240px) rotate(-10deg) scale(0.7);
+    opacity: 0;
+  }
+  22% {
+    transform: translateY(0) rotate(3deg) scale(1.1);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(-6px) rotate(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-110px) scale(0.15);
+    opacity: 0;
+  }
+}
+
+.callout {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  translate: -50% -50%;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  width: max-content;
+  max-width: 100%;
+}
+
+.callout--show {
+  animation: callout 1800ms ease-out forwards;
+}
+
+@keyframes callout {
+  0% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  12% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.callout__title {
+  font-size: clamp(52px, 8vw, 108px);
+  line-height: 1;
+  color: var(--ember);
+  text-shadow:
+    0 5px 0 var(--lava-deep),
+    0 10px 0 var(--ink);
+}
+
+.callout--eruption .callout__title {
+  color: #fff1d0;
+  text-shadow:
+    0 5px 0 var(--lava),
+    0 10px 0 var(--lava-deep),
+    0 15px 0 var(--ink);
+}
+
+.callout--near .callout__title {
+  color: var(--lava);
+}
+
+.callout--far .callout__title {
+  color: var(--jungle);
+  text-shadow:
+    0 5px 0 #1d6b42,
+    0 10px 0 var(--ink);
+}
+
+.callout--round .callout__title {
+  font-size: clamp(40px, 6vw, 72px);
+}
+
+.callout__detail {
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgb(10 7 16 / 0.78);
+  font-size: 27px;
+}
+
+/* Registro de la partida. */
+.log {
+  grid-area: log;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.log__list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+  overflow-y: auto;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.log__list:empty::before {
+  content: 'Aquí aparece cada jugada.';
+  color: var(--steam);
+}
+
+.log__item {
+  padding: 6px 0;
+  border-bottom: 2px dashed rgb(58 47 79 / 0.7);
+}
+
+.log__item--Eruption {
+  color: #ff9478;
+}
+
+.log__item--MatchEnded {
+  color: var(--ember);
+}
+
+.log__item--RoundStarted,
+.log__item--MatchStarted {
+  color: var(--steam);
+}
+
+/* La mano propia, en abanico. */
+.table__hand {
+  grid-area: hand;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 28px;
+}
+
+.me {
+  display: grid;
+  gap: 6px;
+  align-self: center;
+}
+
+.me__name {
+  color: var(--steam);
+  font-size: 20px;
+}
+
+.hand {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 30px 12px 18px;
+}
+
+.card {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  width: 132px;
+  height: 184px;
+  margin: 0 -8px;
+  padding: 10px;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: var(--stone);
+  border: 4px solid var(--ink);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 0 0 3px rgb(255 255 255 / 0.45),
+    0 6px 0 var(--ink);
+}
+
+.hand .card {
+  cursor: pointer;
+  translate: 0 var(--fan-y, 0);
+  rotate: var(--fan-rot, 0deg);
+  transition:
+    translate 160ms cubic-bezier(0.3, 1.7, 0.5, 1),
+    rotate 160ms,
+    scale 160ms,
+    box-shadow 160ms;
+}
+
+.hand .card:hover:not(:disabled),
+.hand .card:focus-visible {
+  z-index: 2;
+  translate: 0 -28px;
+  rotate: 0deg;
+  scale: 1.06;
+  box-shadow:
+    inset 0 0 0 3px rgb(255 255 255 / 0.45),
+    0 12px 0 var(--ink);
+}
+
+.hand .card:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.5) brightness(0.72);
+}
+
+.hand--wake .card:not(:disabled) {
+  animation: wake 420ms cubic-bezier(0.3, 1.7, 0.5, 1);
+}
+
+@keyframes wake {
+  50% {
+    transform: translateY(-18px);
+  }
+}
+
+.card--cool {
+  background: var(--tide);
+}
+
+.card--seismo {
+  background: var(--jungle);
+}
+
+.card__effect {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.card__art {
+  width: 100%;
+  align-self: center;
+}
+
+.card__name {
+  justify-self: center;
+  font-size: 20px;
+}
+
+.card__key {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: rgb(10 7 16 / 0.14);
+  font: inherit;
+  font-size: 17px;
+}
+
+.rock {
+  fill: #8e86a3;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.rock-facet {
+  fill: none;
+  stroke: #5d5674;
+  stroke-width: 2;
+}
+
+.drop {
+  fill: #effffd;
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
+.drop-shine {
+  fill: none;
+  stroke: var(--tide);
+  stroke-width: 3;
+}
+
+.wave {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+/* --- Erupción: temblor y chispas -------------------------------------------------------------- */
+
+.shake {
+  animation: shake 520ms steps(8);
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  15% {
+    transform: translate(-10px, 5px);
+  }
+  30% {
+    transform: translate(9px, -6px);
+  }
+  45% {
+    transform: translate(-7px, -4px);
+  }
+  60% {
+    transform: translate(6px, 6px);
+  }
+  75% {
+    transform: translate(-3px, 2px);
+  }
+}
+
+.sparks {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  pointer-events: none;
+}
+
+.spark {
+  position: fixed;
+  left: var(--x0);
+  top: var(--y0);
+  width: var(--size);
+  height: var(--size);
+  background: var(--ember);
+  box-shadow: 0 0 0 3px var(--lava);
+  opacity: 0;
+  animation: spark 1150ms cubic-bezier(0.2, 0.7, 0.4, 1) var(--delay) forwards;
+}
+
+@keyframes spark {
+  0% {
+    transform: translate(0, 0);
+    opacity: 1;
+  }
+  60% {
+    transform: translate(var(--dx), var(--dy));
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--dx), calc(var(--dy) + 140px));
+    opacity: 0;
+  }
+}
+
+/* --- Fin de la partida y avisos -------------------------------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(10 7 16 / 0.62);
+}
+
+.end {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  max-width: 560px;
+  padding: 32px 36px;
+  text-align: center;
+}
+
+.end__title {
+  font-size: clamp(52px, 9vw, 84px);
+  line-height: 1;
+  color: var(--mist);
+  text-shadow:
+    0 4px 0 var(--rock),
+    0 8px 0 var(--ink);
+}
+
+.end--win .end__title {
+  color: var(--ember);
+  text-shadow:
+    0 4px 0 var(--lava),
+    0 8px 0 var(--lava-deep),
+    0 12px 0 var(--ink);
+}
+
+.end__detail {
+  font-size: 25px;
+}
+
+.end__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  z-index: 40;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 16px;
+  border: 3px solid var(--ink);
+  border-radius: 8px;
+  background: var(--basalt);
+  box-shadow:
+    inset 0 0 0 2px var(--rock),
+    0 5px 0 var(--ink);
+  font-size: 21px;
+  translate: -50% calc(100% + 40px);
+  visibility: hidden;
+  transition:
+    translate 220ms cubic-bezier(0.3, 1.4, 0.5, 1),
+    visibility 220ms;
+}
+
+.toast--on {
+  translate: -50% 0;
+  visibility: visible;
+}
+
+/* --- Pantallas angostas ----------------------------------------------------------------------- */
+
+@media (max-width: 1000px) {
+  .home {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'brand' 'form' 'rules';
+    padding-top: 4vh;
+  }
+
+  .home__tagline {
+    margin-top: 28px;
+  }
+
+  .table {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-template-areas: 'rivals' 'stage' 'hand' 'info' 'log';
+    height: auto;
+  }
+
+  .volcano {
+    flex: none;
+    height: 34vh;
+  }
+
+  .pressure {
+    position: static;
+    translate: none;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .stage__played {
+    right: 0;
+    top: 60%;
+    scale: 0.7;
+  }
+
+  .log__list {
+    max-height: 240px;
+  }
+
+  .info {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    column-gap: 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .topbar {
+    gap: 10px;
+    padding: 10px 16px;
+  }
+
+  .server-version {
+    display: none;
+  }
+
+  .home,
+  .table {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .home__join {
+    flex-direction: column;
+  }
+
+  .rival {
+    min-width: 0;
+  }
+
+  .table__hand {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .card {
+    width: 84px;
+    height: 120px;
+    margin: 0 -6px;
+    padding: 6px;
+    border-width: 3px;
+    border-radius: 9px;
+  }
+
+  .card__effect {
+    font-size: 24px;
+  }
+
+  .card__name {
+    font-size: 13px;
+  }
+
+  .card__key {
+    display: none;
+  }
+
+  .invite__code {
+    font-size: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+
+  /* La barra del turno es información, no adorno: sigue bajando a su ritmo. */
+  .timer--running .timer__bar {
+    animation-duration: var(--turn-ms, 30s) !important;
+  }
+}

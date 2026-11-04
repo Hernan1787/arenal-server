@@ -2,7 +2,7 @@
   "name": "@arenal/client",
   "version": "0.1.0",
   "private": true,
-  "description": "Cliente de Arenal (REST y WebSocket) para el bot, el cliente de prueba y la prueba de carga.",
+  "description": "Cliente de Arenal (REST y WebSocket) para la web, el bot, el cliente de prueba y la prueba de carga.",
   "type": "module",
   "files": [
     "dist"
@@ -10,6 +10,7 @@
   "exports": {
     ".": {
       "types": "./src/index.ts",
+      "browser": "./src/browser.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
     }

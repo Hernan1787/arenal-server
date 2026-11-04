@@ -27,6 +27,11 @@ export default tseslint.config(
     },
   },
   {
+    // La web corre en el navegador.
+    files: ['apps/web/**/*.ts'],
+    languageOptions: { globals: globals.browser },
+  },
+  {
     // El dominio es puro: sin red, base de datos, framework ni APIs de Node.
     files: ['packages/domain/src/**/*.ts'],
     rules: {

@@ -14,6 +14,7 @@ COPY packages/contracts/package.json packages/contracts/
 # en el workspace para empaquetar, pero no entra a la imagen final.
 COPY packages/client/package.json packages/client/
 COPY apps/server/package.json apps/server/
+COPY apps/web/package.json apps/web/
 RUN pnpm install --frozen-lockfile --ignore-scripts
 
 COPY tsconfig.base.json ./
@@ -27,11 +28,19 @@ COPY apps/server apps/server
 RUN pnpm --filter-prod "@arenal/server..." build \
  && pnpm --filter @arenal/server deploy --prod --legacy --ignore-scripts /out
 
+# La web (apps/web): archivos estáticos que el mismo servidor sirve en la raíz. Usa el código
+# fuente del cliente y del dominio; a la imagen final solo llega lo compilado.
+COPY packages/client packages/client
+COPY apps/web apps/web
+RUN pnpm --filter @arenal/web build
+
 # --- Imagen final -------------------------------------------------------------------------
 FROM node:24-slim AS runtime
 ENV NODE_ENV=production PORT=8080
 WORKDIR /app
 COPY --from=build --chown=node:node /out ./
+COPY --from=build --chown=node:node /repo/apps/web/dist ./web
+ENV WEB_ROOT=/app/web
 # Corre como usuario sin privilegios (requisito del proyecto).
 USER node
 EXPOSE 8080
