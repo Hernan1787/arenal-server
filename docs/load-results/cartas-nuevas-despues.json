@@ -1,0 +1,211 @@
+{
+  "url": "http://localhost:8080",
+  "playersPerMatch": 2,
+  "label": "cartas-nuevas-mismo-equipo",
+  "results": [
+    {
+      "matches": 50,
+      "players": 100,
+      "durationS": 45,
+      "thinkMs": 250,
+      "moves": 8457,
+      "movesPerSecond": 187.9,
+      "latencyMs": {
+        "p50": 6.4,
+        "p95": 22,
+        "p99": 40.1,
+        "max": 80.2,
+        "mean": 8.7
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "rateLimited": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 222,
+      "server": {
+        "cpuPercentAvg": 32.3,
+        "cpuPercentMax": 79,
+        "rssMbAvg": 205.9,
+        "rssMbMax": 215.2
+      },
+      "database": {
+        "cpuPercentAvg": 27.9,
+        "cpuPercentMax": 53
+      },
+      "meetsGoals": true
+    },
+    {
+      "matches": 100,
+      "players": 200,
+      "durationS": 45,
+      "thinkMs": 250,
+      "moves": 16467,
+      "movesPerSecond": 365.7,
+      "latencyMs": {
+        "p50": 9.1,
+        "p95": 31.7,
+        "p99": 54.8,
+        "max": 139.2,
+        "mean": 12.5
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "rateLimited": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 464,
+      "server": {
+        "cpuPercentAvg": 48.4,
+        "cpuPercentMax": 64,
+        "rssMbAvg": 286.8,
+        "rssMbMax": 337.4
+      },
+      "database": {
+        "cpuPercentAvg": 53.1,
+        "cpuPercentMax": 66
+      },
+      "meetsGoals": true
+    },
+    {
+      "matches": 200,
+      "players": 400,
+      "durationS": 45.2,
+      "thinkMs": 250,
+      "moves": 25256,
+      "movesPerSecond": 559.2,
+      "latencyMs": {
+        "p50": 62.1,
+        "p95": 127.1,
+        "p99": 152.5,
+        "max": 186.9,
+        "mean": 66.4
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "rateLimited": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 739,
+      "server": {
+        "cpuPercentAvg": 62.3,
+        "cpuPercentMax": 74.9,
+        "rssMbAvg": 359.8,
+        "rssMbMax": 375.3
+      },
+      "database": {
+        "cpuPercentAvg": 79.9,
+        "cpuPercentMax": 89.9
+      },
+      "meetsGoals": true
+    },
+    {
+      "matches": 300,
+      "players": 600,
+      "durationS": 45.4,
+      "thinkMs": 250,
+      "moves": 26294,
+      "movesPerSecond": 578.7,
+      "latencyMs": {
+        "p50": 166.4,
+        "p95": 261.5,
+        "p99": 291.3,
+        "max": 341.6,
+        "mean": 173
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "rateLimited": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 820,
+      "server": {
+        "cpuPercentAvg": 63.3,
+        "cpuPercentMax": 75.8,
+        "rssMbAvg": 386.7,
+        "rssMbMax": 393.7
+      },
+      "database": {
+        "cpuPercentAvg": 80.4,
+        "cpuPercentMax": 90.9
+      },
+      "meetsGoals": false
+    },
+    {
+      "matches": 400,
+      "players": 800,
+      "durationS": 45.7,
+      "thinkMs": 250,
+      "moves": 25422,
+      "movesPerSecond": 556.1,
+      "latencyMs": {
+        "p50": 302.2,
+        "p95": 400,
+        "p99": 463.3,
+        "max": 520.5,
+        "mean": 304.3
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "rateLimited": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 877,
+      "server": {
+        "cpuPercentAvg": 63.3,
+        "cpuPercentMax": 75,
+        "rssMbAvg": 407.8,
+        "rssMbMax": 413.9
+      },
+      "database": {
+        "cpuPercentAvg": 78.2,
+        "cpuPercentMax": 86
+      },
+      "meetsGoals": false
+    },
+    {
+      "matches": 500,
+      "players": 1000,
+      "durationS": 46.2,
+      "thinkMs": 250,
+      "moves": 25762,
+      "movesPerSecond": 558.2,
+      "latencyMs": {
+        "p50": 424.8,
+        "p95": 551.3,
+        "p99": 638,
+        "max": 702.9,
+        "mean": 426.3
+      },
+      "lostMoves": 0,
+      "duplicateAcks": 0,
+      "rateLimited": 0,
+      "sequenceGaps": 0,
+      "invalidMessages": 0,
+      "errors": 0,
+      "errorRate": 0,
+      "finishedMatches": 953,
+      "server": {
+        "cpuPercentAvg": 62.7,
+        "cpuPercentMax": 81.1,
+        "rssMbAvg": 425.2,
+        "rssMbMax": 425.9
+      },
+      "database": {
+        "cpuPercentAvg": 79.1,
+        "cpuPercentMax": 105
+      },
+      "meetsGoals": false
+    }
+  ]
+}
