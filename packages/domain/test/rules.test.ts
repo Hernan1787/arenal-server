@@ -21,7 +21,7 @@ describe('inicio de partida', () => {
 
     expect(state.status).toBe('playing');
     expect(state.players.map((p) => p.hand.length)).toEqual([4, 4, 4]);
-    expect(state.drawPile).toHaveLength(44 - 12);
+    expect(state.drawPile).toHaveLength(62 - 12);
     expect(state.round).toBe(1);
     expect(state.limit).toBeGreaterThanOrEqual(DEFAULT_CONFIG.limitMin);
     expect(state.limit).toBeLessThanOrEqual(DEFAULT_CONFIG.limitMax);
@@ -33,18 +33,20 @@ describe('inicio de partida', () => {
     expect(state.players.map((p) => p.id)).toEqual(order);
   });
 
-  it('crea 44 cartas con IDs únicos y opacos que no revelan qué carta son', () => {
+  it('crea 62 cartas con IDs únicos y opacos que no revelan qué carta son', () => {
     const initial = createMatch('m1', ['ana', 'beto']);
     const result = decide(initial, { type: 'start' }, { rng: seededRng(1) });
     if (!result.ok) throw new Error(result.error.message);
     const deck = result.value.find((e) => e.type === 'DeckShuffled');
     const cards = deck?.type === 'DeckShuffled' ? deck.cards : [];
 
-    expect(cards).toHaveLength(44);
-    expect(new Set(cards.map((c) => c.id)).size).toBe(44);
+    expect(cards).toHaveLength(62);
+    expect(new Set(cards.map((c) => c.id)).size).toBe(62);
     for (const card of cards) expect(card.id).toMatch(/^c_[0-9a-z]{6}$/);
-    expect(cards.filter((c) => c.kind === 'cool')).toHaveLength(6);
-    expect(cards.filter((c) => c.kind === 'seismo')).toHaveLength(4);
+    const count = (kind: string): number => cards.filter((c) => c.kind === kind).length;
+    expect(count('stone')).toBe(34);
+    expect([count('bomb'), count('quake'), count('cool'), count('rain'), count('seismo')]).toEqual([3, 4, 4, 2, 4]);
+    expect([count('divert'), count('ash'), count('steal'), count('shield')]).toEqual([3, 3, 3, 2]);
   });
 
   it('rechaza menos de 2, más de 5, jugadores repetidos y empezar dos veces', () => {

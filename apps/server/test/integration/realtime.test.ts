@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ServerMessage } from '@arenal/contracts';
+import { defaultPlay } from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { registerUser, registerUsers, useHarness, type TestUser } from './harness.js';
 import { handshakeStatus, play, ticketFor, TestSocket } from './ws-client.js';
@@ -41,13 +42,16 @@ async function startMatch(): Promise<{ matchId: string; ana: TestUser; beto: Tes
 }
 
 /** Quién juega y con qué carta, leído del estado completo (solo para preparar la prueba). */
-async function turnOf(matchId: string): Promise<{ playerId: string; cardId: string; seq: number; hand: string[] }> {
+async function turnOf(
+  matchId: string,
+): Promise<{ playerId: string; cardId: string; targetId?: string; seq: number; hand: string[] }> {
   const loaded = await h.services.store.load(matchId);
   const playerId = loaded?.state.currentPlayer ?? null;
   const hand = loaded?.state.players.find((p) => p.id === playerId)?.hand.map((c) => c.id) ?? [];
-  const cardId = hand[0];
-  if (loaded === undefined || playerId === null || cardId === undefined) throw new Error('sin turno');
-  return { playerId, cardId, seq: loaded.row.seq, hand };
+  // La que jugaría el servidor: nunca necesita rival en estas pruebas de dos jugadores con cartas.
+  const chosen = loaded === undefined || playerId === null ? undefined : defaultPlay(loaded.state, playerId);
+  if (loaded === undefined || playerId === null || chosen === undefined) throw new Error('sin turno');
+  return { playerId, ...chosen, seq: loaded.row.seq, hand };
 }
 
 describe('handshake', () => {

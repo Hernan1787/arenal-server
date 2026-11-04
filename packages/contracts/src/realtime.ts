@@ -23,14 +23,25 @@ const Seq = z.int().min(0).describe('Número de secuencia del último evento de 
 
 // --- Cartas y estado público ------------------------------------------------------------
 
-export const CardSchema = z.discriminatedUnion('kind', [
-  z.object({
-    id: CardId,
-    kind: z.literal('stone'),
-    value: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
-  }),
-  z.object({ id: CardId, kind: z.literal('cool') }),
-  z.object({ id: CardId, kind: z.literal('seismo') }),
+const StoneValue = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
+/** Cartas sin valor propio. Lo que hace cada una está en docs/game-rules.md. */
+const SPECIAL_KINDS = ['bomb', 'quake', 'cool', 'rain', 'seismo', 'divert', 'ash', 'steal', 'shield'] as const;
+
+export const CardSchema = z
+  .discriminatedUnion('kind', [
+    z.object({ id: CardId, kind: z.literal('stone'), value: StoneValue }),
+    ...SPECIAL_KINDS.map((kind) => z.object({ id: CardId, kind: z.literal(kind) })),
+  ])
+  .describe(
+    'stone: la presión sube `value`. bomb: sube `bombAmount`. quake: sube un número al azar. cool y rain: bajan. ' +
+      'seismo: dice si el límite está cerca. divert: el siguiente juega dos. ash: ver una carta de un rival. ' +
+      'steal: quitarle una carta a un rival. shield: la próxima erupción no quita vida.',
+  );
+
+/** Una carta sin su ID: lo que se ve de una carta ajena con Ceniza. */
+export const CardFaceSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('stone'), value: StoneValue }),
+  ...SPECIAL_KINDS.map((kind) => z.object({ kind: z.literal(kind) })),
 ]);
 
 const EliminationReason = z.enum(['lives', 'abandon']);
@@ -51,6 +62,7 @@ export const PlayerViewSchema = z
     round: z.int().min(0),
     turn: z.int().min(0),
     currentPlayer: PlayerId.nullable(),
+    playsLeft: z.int().min(0).max(2).describe('Cartas que le quedan al jugador de turno (2 después de un Desvío).'),
     pressure: z.int().min(0),
     lastRevealedLimit: z.int().nullable(),
     drawPileCount: z.int().min(0),
@@ -63,6 +75,7 @@ export const PlayerViewSchema = z
         handCount: z.int().min(0),
         eliminated: z.boolean(),
         eliminationReason: EliminationReason.nullable(),
+        shielded: z.boolean().describe('Tiene un Escudo puesto.'),
       }),
     ),
     you: z
@@ -70,6 +83,10 @@ export const PlayerViewSchema = z
         id: PlayerId,
         hand: z.array(CardSchema),
         seismo: z.object({ near: z.boolean() }).nullable(),
+        peek: z
+          .object({ targetId: PlayerId, card: CardFaceSchema })
+          .nullable()
+          .describe('Lo que viste con Ceniza en esta ronda, sin el ID de la carta.'),
       })
       .nullable(),
     rules: z.object({
@@ -78,6 +95,10 @@ export const PlayerViewSchema = z
       limitMin: z.int(),
       limitMax: z.int(),
       coolAmount: z.int(),
+      rainAmount: z.int(),
+      bombAmount: z.int(),
+      quakeMin: z.int(),
+      quakeMax: z.int(),
       seismoThreshold: z.int(),
       maxRounds: z.int(),
     }),
@@ -91,16 +112,40 @@ export const PlayerEventSchema = z
     z.object({ type: z.literal('DeckShuffled'), count: z.int().min(0) }),
     z.object({ type: z.literal('CardDrawn'), playerId: PlayerId, card: CardSchema.optional() }),
     z.object({ type: z.literal('RoundStarted'), round: z.int().min(1), firstPlayer: PlayerId }),
-    z.object({ type: z.literal('TurnStarted'), playerId: PlayerId, turn: z.int().min(1) }),
+    z.object({
+      type: z.literal('TurnStarted'),
+      playerId: PlayerId,
+      turn: z.int().min(1),
+      playsLeft: z.int().min(1).max(2).optional().describe('Cartas que juega en este turno. Si falta, 1.'),
+    }),
     z.object({
       type: z.literal('CardPlayed'),
       playerId: PlayerId,
       card: CardSchema,
       pressureAfter: z.int().min(0),
       auto: z.boolean(),
+      targetId: PlayerId.optional().describe('Contra quién se jugó (Ceniza y Robo).'),
+      rolled: z.int().min(1).optional().describe('Lo que sorteó el servidor para el Temblor.'),
     }),
     z.object({ type: z.literal('SeismoRead'), playerId: PlayerId, near: z.boolean().optional() }),
-    z.object({ type: z.literal('Eruption'), playerId: PlayerId, limit: z.int(), livesLeft: z.int().min(0) }),
+    z
+      .object({
+        type: z.literal('CardPeeked'),
+        playerId: PlayerId,
+        targetId: PlayerId,
+        card: CardFaceSchema.optional(),
+      })
+      .describe('Ceniza. La carta (sin ID) solo la reciben quien miró y a quien miraron.'),
+    z
+      .object({ type: z.literal('CardStolen'), playerId: PlayerId, targetId: PlayerId, card: CardSchema.optional() })
+      .describe('Robo. La carta solo la reciben el ladrón y la víctima.'),
+    z.object({
+      type: z.literal('Eruption'),
+      playerId: PlayerId,
+      limit: z.int(),
+      livesLeft: z.int().min(0),
+      shielded: z.boolean().optional().describe('El Escudo aguantó la erupción (no se perdió vida).'),
+    }),
     z.object({
       type: z.literal('PlayerEliminated'),
       playerId: PlayerId,
@@ -121,7 +166,12 @@ export const PlayCardMessage = z
     ...clientEnvelope,
     type: z.literal('play_card'),
     expectedSeq: Seq.describe('Último `seq` que vio el cliente. Si la partida avanzó, se rechaza con STALE_STATE.'),
-    payload: z.object({ cardId: CardId }).strict(),
+    payload: z
+      .object({
+        cardId: CardId,
+        targetId: PlayerId.optional().describe('Rival contra el que se juega. Obligatorio para Ceniza y Robo.'),
+      })
+      .strict(),
   })
   .strict()
   .describe('Intención de jugar una carta de la mano. Solo la acepta el servidor si es tu turno.');
@@ -151,6 +201,9 @@ export const ERROR_CODES = [
   'PLAYER_ELIMINATED',
   'NOT_YOUR_TURN',
   'CARD_NOT_IN_HAND',
+  'TARGET_REQUIRED',
+  'INVALID_TARGET',
+  'SHIELD_ACTIVE',
   'MATCH_NOT_STARTED',
   'MATCH_FINISHED',
   // Del protocolo

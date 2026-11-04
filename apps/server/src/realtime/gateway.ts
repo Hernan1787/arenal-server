@@ -355,7 +355,12 @@ export class RealtimeGateway {
       case 'play_card': {
         const result = await this.deps.store.apply(
           message.matchId,
-          { type: 'play_card', playerId: session.userId, cardId: message.payload.cardId },
+          {
+            type: 'play_card',
+            playerId: session.userId,
+            cardId: message.payload.cardId,
+            ...(message.payload.targetId !== undefined && { targetId: message.payload.targetId }),
+          },
           { moveId: message.id, actorId: session.userId, expectedSeq: message.expectedSeq },
         );
         this.reply(session, message, result);

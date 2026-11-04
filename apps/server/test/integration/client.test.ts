@@ -1,4 +1,4 @@
-import { ArenalApi, chooseCard, isMyTurn, ReconnectingSession, RealtimeSession, RejectedError } from '@arenal/client';
+import { ArenalApi, choosePlay, isMyTurn, ReconnectingSession, RealtimeSession, RejectedError } from '@arenal/client';
 import { viewFor, type PlayerView } from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { useHarness } from './harness.js';
@@ -34,9 +34,9 @@ describe('cliente de Arenal contra el servidor', () => {
       if (!isMyTurn(view)) return;
       setTimeout(() => {
         const current = socket.view;
-        const card = isMyTurn(current) ? chooseCard(current) : undefined;
-        if (card === undefined) return;
-        socket.playCard(card.id).catch((error: unknown) => {
+        const move = isMyTurn(current) ? choosePlay(current) : undefined;
+        if (move === undefined) return;
+        socket.playCard(move.card.id, move.targetId).catch((error: unknown) => {
           // Si el servidor pide bajar el ritmo, se vuelve a intentar; un STALE_STATE se resuelve solo
           // con el evento que viene en camino.
           if (error instanceof RejectedError && error.code === 'RATE_LIMITED' && socket.view !== null) {
@@ -105,11 +105,11 @@ describe('cliente de Arenal contra el servidor', () => {
       setTimeout(() => {
         const socket = link.current;
         const current = socket.view;
-        const card = isMyTurn(current) ? chooseCard(current) : undefined;
-        if (card === undefined) return;
+        const move = isMyTurn(current) ? choosePlay(current) : undefined;
+        if (move === undefined) return;
         // Se reintenta si el servidor pide bajar el ritmo o si la jugada salió por la conexión que se
         // acaba de cortar; un STALE_STATE se resuelve solo con el evento que viene en camino.
-        socket.playCard(card.id).catch((error: unknown) => {
+        socket.playCard(move.card.id, move.targetId).catch((error: unknown) => {
           if (error instanceof RejectedError && error.code !== 'RATE_LIMITED') return;
           setTimeout(() => {
             const latest = link.current.view;

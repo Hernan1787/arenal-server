@@ -34,6 +34,8 @@ const id = (): string => `t_${(counter++).toString().padStart(4, '0')}`;
 export const stone = (value: 1 | 2 | 3 | 4): Card => ({ id: id(), kind: 'stone', value });
 export const cool = (): Card => ({ id: id(), kind: 'cool' });
 export const seismo = (): Card => ({ id: id(), kind: 'seismo' });
+/** Cualquier carta sin valor: `special('bomb')`, `special('ash')`… */
+export const special = (kind: Exclude<Card['kind'], 'stone'>): Card => ({ id: id(), kind });
 
 export interface Setup {
   readonly hands: Readonly<Record<PlayerId, readonly Card[]>>;

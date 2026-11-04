@@ -1,7 +1,18 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Parser } from '@asyncapi/parser';
-import { createMatch, decide, evolve, projectEvent, viewFor, type GameState, type PlayerView } from '@arenal/domain';
+import {
+  createMatch,
+  decide,
+  defaultPlay,
+  defaultTarget,
+  evolve,
+  needsTarget,
+  projectEvent,
+  viewFor,
+  type GameState,
+  type PlayerView,
+} from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { stringify } from 'yaml';
 import type { z } from 'zod';
@@ -37,8 +48,9 @@ describe('validación de mensajes del cliente', () => {
     expect(viewFitsContract).toBeTypeOf('function');
   });
 
-  it('acepta una jugada bien formada', () => {
+  it('acepta una jugada bien formada, con o sin rival', () => {
     expect(parseClientMessage(validPlay).ok).toBe(true);
+    expect(parseClientMessage({ ...validPlay, payload: { cardId: 'c_8f3k2a', targetId: 'u_beto' } }).ok).toBe(true);
   });
 
   it.each([
@@ -47,6 +59,8 @@ describe('validación de mensajes del cliente', () => {
     ['tipo desconocido', { ...validPlay, type: 'win_game' }],
     ['ID que no es UUID', { ...validPlay, id: '123' }],
     ['carta con formato raro', { ...validPlay, payload: { cardId: 'piedra-4' } }],
+    ['rival vacío', { ...validPlay, payload: { cardId: 'c_8f3k2a', targetId: '' } }],
+    ['rival que no es texto', { ...validPlay, payload: { cardId: 'c_8f3k2a', targetId: 7 } }],
     ['seq negativo', { ...validPlay, expectedSeq: -1 }],
     ['seq con decimales', { ...validPlay, expectedSeq: 1.5 }],
     ['campos de más (el cliente manda resultados)', { ...validPlay, payload: { cardId: 'c_8f3k2a', points: 10 } }],
@@ -98,11 +112,19 @@ describe('el dominio y el contrato coinciden', () => {
     const start = decide(state, { type: 'start' }, { rng });
     if (!start.ok) throw new Error(start.error.message);
     check(start.value);
-    for (let i = 0; i < 400 && state.status === 'playing'; i++) {
+    // Cartas al azar entre las válidas, para que en la partida salgan todas.
+    for (let i = 0; i < 600 && state.status === 'playing'; i++) {
       const current = state.players.find((p) => p.id === state.currentPlayer);
-      const card = current?.hand[0];
-      if (current === undefined || card === undefined) break;
-      const result = decide(state, { type: 'play_card', playerId: current.id, cardId: card.id }, { rng });
+      if (current === undefined) break;
+      const legal = current.hand.filter((c) => !(c.kind === 'shield' && current.shielded));
+      const card = legal[rng.int(0, legal.length - 1)];
+      const target = defaultTarget(state, current.id);
+      const play =
+        card === undefined
+          ? defaultPlay(state, current.id)
+          : { cardId: card.id, ...(needsTarget(card) && target !== undefined && { targetId: target }) };
+      if (play === undefined) break;
+      const result = decide(state, { type: 'play_card', playerId: current.id, ...play }, { rng });
       if (!result.ok) throw new Error(result.error.message);
       check(result.value);
     }

@@ -1,11 +1,18 @@
 import { DEFAULT_CONFIG, type ArenalConfig } from './config.js';
-import type { Card, PlayerId } from './types.js';
+import type { Card, CardFace, PlayerId } from './types.js';
 
 export type EliminationReason = 'lives' | 'abandon';
 
 export interface SeismoReading {
   readonly round: number;
   readonly near: boolean;
+}
+
+/** Lo que vio un jugador con Ceniza: de quién y qué carta (sin su ID). */
+export interface PeekReading {
+  readonly round: number;
+  readonly targetId: PlayerId;
+  readonly card: CardFace;
 }
 
 export interface PlayerState {
@@ -17,6 +24,9 @@ export interface PlayerState {
   readonly eliminated: boolean;
   readonly eliminationReason: EliminationReason | null;
   readonly lastSeismo: SeismoReading | null;
+  readonly lastPeek: PeekReading | null;
+  /** Jugó un Escudo que todavía no se ha gastado. Es público. */
+  readonly shielded: boolean;
 }
 
 export type MatchStatus = 'waiting' | 'playing' | 'finished';
@@ -43,6 +53,8 @@ export interface GameState {
   /** Aumenta en cada turno; los temporizadores lo usan para no disparar sobre un turno viejo. */
   readonly turn: number;
   readonly currentPlayer: PlayerId | null;
+  /** Cartas que le quedan por jugar al jugador de turno: 2 después de un Desvío, si no 1. */
+  readonly playsLeft: number;
   readonly pressure: number;
   /** Límite secreto de la ronda en curso. `null` entre rondas. */
   readonly limit: number | null;
@@ -72,10 +84,13 @@ export function createMatch(
       eliminated: false,
       eliminationReason: null,
       lastSeismo: null,
+      lastPeek: null,
+      shielded: false,
     })),
     round: 0,
     turn: 0,
     currentPlayer: null,
+    playsLeft: 0,
     pressure: 0,
     limit: null,
     lastRevealedLimit: null,

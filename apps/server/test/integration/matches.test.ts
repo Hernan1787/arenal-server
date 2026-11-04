@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { PlayerViewSchema } from '@arenal/contracts';
+import { defaultPlay } from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { MatchStore } from '../../src/matches/match-store.js';
 import { cryptoRng } from '../../src/rng.js';
@@ -28,13 +29,15 @@ async function startMatch(): Promise<{ matchId: string; players: TestUser[] }> {
   return { matchId: started.matchId, players };
 }
 
-async function currentTurn(matchId: string): Promise<{ playerId: string; cardId: string; seq: number }> {
+async function currentTurn(
+  matchId: string,
+): Promise<{ playerId: string; cardId: string; targetId?: string; seq: number }> {
   const loaded = await h.services.store.load(matchId);
   if (loaded === undefined) throw new Error('no existe la partida');
   const playerId = loaded.state.currentPlayer;
-  const card = loaded.state.players.find((p) => p.id === playerId)?.hand[0];
-  if (playerId === null || card === undefined) throw new Error('sin turno');
-  return { playerId, cardId: card.id, seq: loaded.row.seq };
+  const play = playerId === null ? undefined : defaultPlay(loaded.state, playerId);
+  if (playerId === null || play === undefined) throw new Error('sin turno');
+  return { playerId, ...play, seq: loaded.row.seq };
 }
 
 describe('jugadas: orden, idempotencia y rechazo', () => {

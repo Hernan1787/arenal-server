@@ -8,7 +8,7 @@ export {
   type Session,
   type TicketStatus,
 } from './api.js';
-export { cardName, describeEvent } from './describe.js';
+export { cardHelp, cardName, describeEvent } from './describe.js';
 export {
   RealtimeSession,
   RejectedError,
@@ -20,4 +20,4 @@ export {
   type WebSocketLike,
 } from './realtime.js';
 export { ReconnectingSession, type ReconnectOptions } from './reconnecting.js';
-export { chooseCard, isMyTurn } from './strategy.js';
+export { choosePlay, isMyTurn, isPlayable, validTargets, type CardPlay } from './strategy.js';

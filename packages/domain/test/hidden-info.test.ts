@@ -7,6 +7,7 @@ import {
   deckSize,
   DEFAULT_CONFIG,
   evolve,
+  needsTarget,
   projectEvent,
   replay,
   viewFor,
@@ -37,10 +38,15 @@ function randomIntent(state: GameState, chooser: Rng): Intent {
   }
   if (current === null) throw new Error('Partida en curso sin jugador de turno');
   if (roll < 100) return { type: 'turn_timeout', playerId: current, turn: state.turn };
-  const hand = state.players.find((p) => p.id === current)?.hand ?? [];
+  const me = state.players.find((p) => p.id === current);
+  const hand = (me?.hand ?? []).filter((c) => !(c.kind === 'shield' && me?.shielded === true));
   const card = hand[chooser.int(0, hand.length - 1)];
   if (card === undefined) throw new Error('El jugador de turno no tiene cartas');
-  return { type: 'play_card', playerId: current, cardId: card.id };
+  if (!needsTarget(card)) return { type: 'play_card', playerId: current, cardId: card.id };
+  const targets = alive.filter((p) => p.id !== current && p.hand.length > 0);
+  const target = targets[chooser.int(0, targets.length - 1)];
+  if (target === undefined) throw new Error('No hay a quién apuntar');
+  return { type: 'play_card', playerId: current, cardId: card.id, targetId: target.id };
 }
 
 interface Step {
@@ -104,15 +110,22 @@ describe('información oculta', () => {
     fc.assert(
       fc.property(gameArb, ({ players, seed }) => {
         const { steps } = simulate(players, seed);
-        for (const { event, after } of steps) {
+        for (const { event, before, after } of steps) {
           const publicCard = event.type === 'CardPlayed' ? event.card.id : null;
           for (const viewer of [...after.players.map((p) => p.id), null]) {
             const projected = projectEvent(event, viewer);
-            const own = viewer === null ? new Set<string>() : handIds(after, viewer);
+            // Lo suyo es lo que tiene o lo que tenía: a la víctima de un Robo se le dice qué perdió.
+            const own =
+              viewer === null ? new Set<string>() : new Set([...handIds(before, viewer), ...handIds(after, viewer)]);
             for (const id of cardIdsIn(projected)) expect(id === publicCard || own.has(id)).toBe(true);
             if (projected.type === 'RoundStarted') expect(projected).not.toHaveProperty('limit');
             if (projected.type === 'SeismoRead' && projected.playerId !== viewer) {
               expect(projected).not.toHaveProperty('near');
+            }
+            const involved =
+              'targetId' in projected && (projected.playerId === viewer || projected.targetId === viewer);
+            if ((projected.type === 'CardPeeked' || projected.type === 'CardStolen') && !involved) {
+              expect(projected).not.toHaveProperty('card');
             }
           }
         }

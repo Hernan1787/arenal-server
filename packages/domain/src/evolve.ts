@@ -1,6 +1,6 @@
 import type { DomainEvent } from './events.js';
 import type { GameState, PlayerState } from './state.js';
-import { DomainInvariantError, type Card, type PlayerId } from './types.js';
+import { DomainInvariantError, faceOf, type Card, type PlayerId } from './types.js';
 
 function updatePlayer(state: GameState, playerId: PlayerId, change: (p: PlayerState) => PlayerState): GameState {
   if (!state.players.some((p) => p.id === playerId)) {
@@ -30,7 +30,7 @@ function applyEvent(state: GameState, event: DomainEvent): GameState {
       const players = event.playerOrder.map((id, seat): PlayerState => {
         const existing = state.players.find((p) => p.id === id);
         if (existing === undefined) throw new DomainInvariantError(`El jugador ${id} no estaba en la sala`);
-        return { ...existing, seat, lives: state.config.startingLives };
+        return { ...existing, seat, lives: state.config.startingLives, shielded: false, lastPeek: null };
       });
       return { ...state, status: 'playing', players };
     }
@@ -51,11 +51,26 @@ function applyEvent(state: GameState, event: DomainEvent): GameState {
       return { ...state, round: event.round, limit: event.limit, pressure: 0 };
 
     case 'TurnStarted':
-      return { ...state, currentPlayer: event.playerId, turn: event.turn };
+      return { ...state, currentPlayer: event.playerId, turn: event.turn, playsLeft: event.playsLeft ?? 1 };
 
     case 'CardPlayed': {
-      const withHand = updatePlayer(state, event.playerId, (p) => removeFromHand(p, event.card));
+      const shield = event.card.kind === 'shield';
+      const withHand = updatePlayer(state, event.playerId, (p) => ({
+        ...removeFromHand(p, event.card),
+        shielded: p.shielded || shield,
+      }));
       return { ...withHand, discard: [...state.discard, event.card], pressure: event.pressureAfter };
+    }
+
+    case 'CardPeeked':
+      return updatePlayer(state, event.playerId, (p) => ({
+        ...p,
+        lastPeek: { round: state.round, targetId: event.targetId, card: faceOf(event.card) },
+      }));
+
+    case 'CardStolen': {
+      const without = updatePlayer(state, event.targetId, (p) => removeFromHand(p, event.card));
+      return updatePlayer(without, event.playerId, (p) => ({ ...p, hand: [...p.hand, event.card] }));
     }
 
     case 'SeismoRead':
@@ -65,8 +80,12 @@ function applyEvent(state: GameState, event: DomainEvent): GameState {
       }));
 
     case 'Eruption': {
-      const withLives = updatePlayer(state, event.playerId, (p) => ({ ...p, lives: event.livesLeft }));
-      return { ...withLives, limit: null, lastRevealedLimit: event.limit, currentPlayer: null };
+      const withLives = updatePlayer(state, event.playerId, (p) => ({
+        ...p,
+        lives: event.livesLeft,
+        shielded: event.shielded === true ? false : p.shielded,
+      }));
+      return { ...withLives, limit: null, lastRevealedLimit: event.limit, currentPlayer: null, playsLeft: 0 };
     }
 
     case 'PlayerEliminated': {
@@ -77,11 +96,14 @@ function applyEvent(state: GameState, event: DomainEvent): GameState {
         hand: [],
         eliminated: true,
         eliminationReason: event.reason,
+        shielded: false,
       }));
+      const hadTurn = state.currentPlayer === event.playerId;
       return {
         ...withPlayer,
         discard: [...state.discard, ...player.hand],
-        currentPlayer: state.currentPlayer === event.playerId ? null : state.currentPlayer,
+        currentPlayer: hadTurn ? null : state.currentPlayer,
+        playsLeft: hadTurn ? 0 : state.playsLeft,
       };
     }
 
@@ -89,7 +111,7 @@ function applyEvent(state: GameState, event: DomainEvent): GameState {
       return { ...state, drawPile: event.cards, discard: [] };
 
     case 'MatchEnded':
-      return { ...state, status: 'finished', result: event.result, currentPlayer: null };
+      return { ...state, status: 'finished', result: event.result, currentPlayer: null, playsLeft: 0 };
   }
 }
 
