@@ -73,8 +73,18 @@ export class Sweeper {
         ORDER BY p.disconnected_at LIMIT $2`,
       [limit, BATCH],
     );
+    // Antes de sacar a nadie se pregunta a Redis: con una conexión viva, el jugador está; solo
+    // faltaba registrarlo en Postgres.
+    const live =
+      rows.length === 0
+        ? new Map<string, number>()
+        : await this.deps.presence.liveConnections(rows.map((r) => r.user_id));
     let applied = 0;
     for (const row of rows) {
+      if ((live.get(row.user_id) ?? 0) > 0) {
+        await this.deps.presence.markConnected(row.user_id);
+        continue;
+      }
       try {
         const result = await this.deps.store.apply(row.match_id, { type: 'abandon', playerId: row.user_id });
         if (result.kind === 'applied') {

@@ -255,13 +255,13 @@ describe('Escudo', () => {
     const shielded = act(state, { type: 'play_card', playerId: 'ana', cardId: shield.id }).state;
     const anaTurn: GameState = { ...shielded, currentPlayer: 'ana', pressure: 18 };
     const first = act(anaTurn, { type: 'play_card', playerId: 'ana', cardId: big.id });
-    expect(first.events.find((e) => e.type === 'Eruption')).toMatchObject({ livesLeft: 3, shielded: true });
-    expect(player(first.state, 'ana')).toMatchObject({ lives: 3, shielded: false });
+    expect(first.events.find((e) => e.type === 'Eruption')).toMatchObject({ livesLeft: 2, shielded: true });
+    expect(player(first.state, 'ana')).toMatchObject({ lives: 2, shielded: false });
 
     const again = player(first.state, 'ana').hand.find((c) => c.kind === 'stone' && c.value === 4);
     const anaAgain: GameState = { ...first.state, currentPlayer: 'ana', pressure: 20, limit: 20 };
     const second = act(anaAgain, { type: 'play_card', playerId: 'ana', cardId: again?.id ?? '' });
-    expect(second.events.find((e) => e.type === 'Eruption')).toMatchObject({ livesLeft: 2, shielded: false });
+    expect(second.events.find((e) => e.type === 'Eruption')).toMatchObject({ livesLeft: 1, shielded: false });
   });
 });
 

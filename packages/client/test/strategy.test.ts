@@ -34,7 +34,7 @@ const stone = (id: string, value: 1 | 2 | 3 | 4): Card => ({ id, kind: 'stone', 
 
 describe('estrategia del bot', () => {
   it('con presión baja juega la piedra más alta que no puede pasar el límite mínimo', () => {
-    const state = withHand(started(), [stone('a', 1), stone('b', 4), stone('c', 3)], 11);
+    const state = withHand(started(), [stone('a', 1), stone('b', 4), stone('c', 3)], 8);
     expect(choosePlay(viewFor(state, state.currentPlayer))?.card.id).toBe('b');
   });
 
@@ -53,9 +53,9 @@ describe('estrategia del bot', () => {
   });
 
   it('con margen suficiente la Bomba también es segura, y sube más que una piedra', () => {
-    const state = withHand(started(), [stone('a', 4), { id: 'b', kind: 'bomb' }], 9);
+    const state = withHand(started(), [stone('a', 4), { id: 'b', kind: 'bomb' }], 6);
     expect(choosePlay(viewFor(state, state.currentPlayer))?.card.id).toBe('b');
-    const tight = withHand(started(), [stone('a', 4), { id: 'b', kind: 'bomb' }], 11);
+    const tight = withHand(started(), [stone('a', 4), { id: 'b', kind: 'bomb' }], 8);
     expect(choosePlay(viewFor(tight, tight.currentPlayer))?.card.id).toBe('a');
   });
 

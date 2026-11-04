@@ -347,6 +347,37 @@ describe('reloj del servidor', () => {
     await sa.close();
   });
 
+  it('quien ya estaba conectado cuando se creó la partida no cae en abandono', async () => {
+    const [ana, beto] = await registerUsers(h.app, 2);
+    if (ana === undefined || beto === undefined) throw new Error('faltan usuarios');
+    // Primero las conexiones, después la partida: así pasa con la cola y con los bots de práctica.
+    const [sa, sb] = await Promise.all([connect(ana), connect(beto)]);
+    const room = (
+      await h.app.inject({ method: 'POST', url: '/v1/rooms', headers: ana.auth, payload: { visibility: 'public' } })
+    ).json<{ id: string }>();
+    await h.app.inject({ method: 'POST', url: `/v1/rooms/${room.id}/join`, headers: beto.auth });
+    await h.app.inject({
+      method: 'PUT',
+      url: `/v1/rooms/${room.id}/ready`,
+      headers: ana.auth,
+      payload: { ready: true },
+    });
+    await h.app.inject({
+      method: 'PUT',
+      url: `/v1/rooms/${room.id}/ready`,
+      headers: beto.auth,
+      payload: { ready: true },
+    });
+    const snap = (await sa.next(isSnapshot)) as Snapshot;
+    await sb.next(isSnapshot);
+
+    h.clock.advance(61_000);
+    expect((await h.services.sweeper.tick()).abandons).toBe(0);
+    const { rows } = await h.db.query<{ status: string }>('SELECT status FROM matches WHERE id = $1', [snap.matchId]);
+    expect(rows[0]?.status).toBe('playing');
+    await Promise.all([sa.close(), sb.close()]);
+  });
+
   it('quien nunca se conecta también cae en la regla de abandono', async () => {
     const { ana } = await startMatch();
     const sa = await connect(ana);

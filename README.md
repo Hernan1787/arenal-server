@@ -26,7 +26,7 @@ Las reglas del juego están en [docs/game-rules.md](docs/game-rules.md).
 | Infraestructura en Azure (Bicep) y despliegue  | Desplegado en Azure for Students (Container Apps en modo Express, North Central US): identidad administrada sin contraseñas, dev automático, prod con aprobación, rollback a la imagen anterior |
 | Observabilidad                                 | OpenTelemetry a Application Insights: trazas por partida, métricas propias, logs con `trace_id`, 4 alertas                                                                                      |
 | Bot y cliente de prueba                        | Bots que juegan solos por la cola (`pnpm bot`) y cliente en la terminal (`pnpm play`); los dos reconectan solos si su réplica se apaga y siguen la misma partida                                |
-| Interfaz web                                   | Juego completo en el navegador, servido por el mismo servidor en la raíz: cola, salas privadas, mesa con el volcán, reconexión visible y fin de partida                                         |
+| Interfaz web                                   | Juego completo en el navegador, servido por el mismo servidor en la raíz: práctica contra 1 a 3 bots, cola, salas privadas, mesa con el volcán animado, reconexión visible y fin de partida     |
 | Prueba de carga                                | Partidas reales por WebSocket. En local cumple p95 < 200 ms hasta 400 partidas simultáneas; la caché de estado subió el punto de quiebre de 300 a 500 ([docs/load-test.md](docs/load-test.md))  |
 
 URL pública en Azure (producción): <https://ca-arenal-prod.bluebay-50111a05.northcentralus.azurecontainerapps.io>, con la
@@ -74,15 +74,17 @@ instalado. El CI lo corre siempre.
 
 **En el navegador:** el mismo servidor sirve la web en la raíz, en Azure
 (<https://ca-arenal-prod.bluebay-50111a05.northcentralus.azurecontainerapps.io>) y en local con `docker compose up`
-(<http://localhost:8080>). Se escribe un nombre y se busca partida; para jugar solo, abre otra pestaña o trae bots.
+(<http://localhost:8080>). Se escribe un nombre y se juega contra bots (de 1 a 3, corren en la misma pestaña), se
+busca partida con personas o se arma una sala privada con código.
 En desarrollo, `pnpm --filter @arenal/web dev` levanta la web con recarga en <http://localhost:5173> contra el
-servidor local. Diseño y decisiones: [ADR 0012](docs/adr/0012-interfaz-web.md).
+servidor local. Diseño y decisiones: [ADR 0012](docs/adr/0012-interfaz-web.md) y
+[ADR 0013](docs/adr/0013-cartas-nuevas-y-bots-de-practica.md).
 
 **En la terminal,** con el servidor corriendo (`docker compose up` o `pnpm dev`):
 
 ```bash
-pnpm bot --bots 4 --games 3            # 4 bots juegan 3 partidas por la cola rápida
-pnpm play --name Hernán                 # cliente en la terminal; en otra terminal: pnpm bot --bots 3
+pnpm bot --bots 3 --games 3            # 3 bots juegan 3 partidas por la cola (piensan ~2 s; --think en ms)
+pnpm play --name Hernán                 # cliente en la terminal; en otra terminal: pnpm bot --bots 2
 pnpm load --matches 50 --duration 60    # prueba de carga (ver docs/load-test.md)
 ```
 
@@ -167,6 +169,7 @@ En [docs/adr](docs/adr):
 10. [Caché del estado de las partidas en cada réplica](docs/adr/0010-cache-de-estado-por-replica.md)
 11. [Ajustes por los límites de Azure for Students](docs/adr/0011-limites-de-azure-for-students.md)
 12. [Interfaz web servida por el mismo servidor](docs/adr/0012-interfaz-web.md)
+13. [Cartas nuevas, ritmo de la mesa y bots de práctica en el navegador](docs/adr/0013-cartas-nuevas-y-bots-de-practica.md)
 
 ## Azure
 

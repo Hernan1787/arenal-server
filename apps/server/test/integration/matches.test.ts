@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { PlayerViewSchema } from '@arenal/contracts';
-import { defaultPlay } from '@arenal/domain';
+import { defaultPlay, needsTarget } from '@arenal/domain';
 import { describe, expect, it } from 'vitest';
 import { MatchStore } from '../../src/matches/match-store.js';
 import { cryptoRng } from '../../src/rng.js';
@@ -39,6 +39,15 @@ async function currentTurn(
   if (playerId === null || play === undefined) throw new Error('sin turno');
   return { playerId, ...play, seq: loaded.row.seq };
 }
+
+/** La intención de jugar lo que devolvió `currentTurn` (con el rival si la carta lo pide). */
+const playOf = (turn: { playerId: string; cardId: string; targetId?: string }) =>
+  ({
+    type: 'play_card',
+    playerId: turn.playerId,
+    cardId: turn.cardId,
+    ...(turn.targetId !== undefined && { targetId: turn.targetId }),
+  }) as const;
 
 describe('jugadas: orden, idempotencia y rechazo', () => {
   it('una jugada válida guarda sus eventos con secuencia consecutiva', async () => {
@@ -117,12 +126,13 @@ describe('jugadas: orden, idempotencia y rechazo', () => {
     const hand = loaded?.state.players.find((p) => p.id === turn.playerId)?.hand ?? [];
     const [a, b] = hand;
     if (a === undefined || b === undefined) throw new Error('mano incompleta');
+    const rival = loaded?.state.players.find((p) => p.id !== turn.playerId)?.id ?? '';
 
     const results = await Promise.all(
       [a, b].map((card) =>
         h.services.store.apply(
           matchId,
-          { type: 'play_card', playerId: turn.playerId, cardId: card.id },
+          playOf({ playerId: turn.playerId, cardId: card.id, ...(needsTarget(card) && { targetId: rival }) }),
           {
             moveId: randomUUID(),
             actorId: turn.playerId,
@@ -159,8 +169,7 @@ describe('durabilidad y fin de partida', () => {
   it('otra instancia (como una réplica nueva) reconstruye exactamente el mismo estado', async () => {
     const { matchId } = await startMatch();
     for (let i = 0; i < 5; i++) {
-      const turn = await currentTurn(matchId);
-      await h.services.store.apply(matchId, { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId });
+      await h.services.store.apply(matchId, playOf(await currentTurn(matchId)));
     }
     const fresh = new MatchStore({ db: h.db, clock: h.clock, rng: cryptoRng, turnTimeoutMs: 30_000 });
     expect((await fresh.load(matchId))?.state).toEqual((await h.services.store.load(matchId))?.state);
@@ -175,8 +184,9 @@ describe('durabilidad y fin de partida', () => {
       const store = replicas[i % 2 === 0 || i > 8 ? 0 : 1] ?? h.services.store;
       const loaded = await store.load(matchId);
       const playerId = loaded?.state.currentPlayer ?? '';
-      const cardId = loaded?.state.players.find((p) => p.id === playerId)?.hand[0]?.id ?? '';
-      const result = await store.apply(matchId, { type: 'play_card', playerId, cardId });
+      const play = loaded === undefined ? undefined : defaultPlay(loaded.state, playerId);
+      if (play === undefined) throw new Error('sin jugada');
+      const result = await store.apply(matchId, playOf({ playerId, ...play }));
       expect(result.kind).toBe('applied');
     }
     // Lo que cada réplica tiene en memoria coincide con reconstruir todo desde Postgres.
@@ -191,7 +201,7 @@ describe('durabilidad y fin de partida', () => {
       const loaded = await h.services.store.load(matchId);
       if (loaded?.state.status !== 'playing') break;
       const turn = await currentTurn(matchId);
-      await h.services.store.apply(matchId, { type: 'play_card', playerId: turn.playerId, cardId: turn.cardId });
+      await h.services.store.apply(matchId, playOf(turn));
       if (++guard > 2000) throw new Error('la partida no termina');
     }
 

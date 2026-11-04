@@ -435,6 +435,9 @@ export class RealtimeGateway {
       sessions.add(session);
       if (session.isClosed()) return this.removeFromMatch(session);
     }
+    // Si la partida se creó con el jugador ya conectado (cola o sala), nadie había marcado que
+    // está presente: sin esto, al vencer el periodo de gracia caería en abandono jugando.
+    await this.deps.presence.markConnected(session.userId);
     const loaded = await this.deps.store.load(matchId);
     if (loaded === undefined) return;
     session.lastSeq = loaded.row.seq;
