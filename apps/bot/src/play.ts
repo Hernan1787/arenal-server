@@ -8,8 +8,16 @@
  * réplica se apaga (por ejemplo al publicar una revisión nueva), reconecta sola y sigue jugando.
  */
 import { createInterface } from 'node:readline/promises';
-import { cardName, describeEvent, RejectedError, type ReconnectingSession } from '@arenal/client';
-import type { PlayerView } from '@arenal/domain';
+import {
+  cardHelp,
+  cardName,
+  describeEvent,
+  isPlayable,
+  RejectedError,
+  validTargets,
+  type ReconnectingSession,
+} from '@arenal/client';
+import { needsTarget, type PlayerView } from '@arenal/domain';
 import { arg, connectResilient, createPlayer, type Player } from './players.js';
 
 const url = arg('url', 'http://localhost:8080');
@@ -17,12 +25,28 @@ const rl = createInterface({ input: process.stdin, output: process.stdout });
 
 function showTable(view: PlayerView, who: (id: string) => string): void {
   const players = view.players
-    .map((p) => `${who(p.id)}: ${p.eliminated ? 'fuera' : `${'♥'.repeat(p.lives)} ${p.handCount} cartas`}`)
+    .map(
+      (p) =>
+        `${who(p.id)}: ${p.eliminated ? 'fuera' : `${'♥'.repeat(p.lives)}${p.shielded ? ' [escudo]' : ''} ${p.handCount} cartas`}`,
+    )
     .join(' | ');
   console.log(`\nRonda ${view.round} · presión ${view.pressure} · límite anterior ${view.lastRevealedLimit ?? '—'}`);
   console.log(players);
+  const peek = view.you?.peek;
+  if (peek !== null && peek !== undefined)
+    console.log(`Viste con Ceniza: ${cardName(peek.card)} de ${who(peek.targetId)}`);
   const hand = view.you?.hand ?? [];
-  console.log(`Tu mano: ${hand.map((c, i) => `[${i + 1}] ${cardName(c)}`).join('  ')}`);
+  for (const [i, c] of hand.entries()) console.log(`  [${i + 1}] ${cardName(c)}: ${cardHelp(c, view.rules)}`);
+  if (view.playsLeft === 2) console.log('Desvío: juegas dos cartas en este turno.');
+}
+
+/** Pregunta contra quién se juega la carta; si hay un solo rival posible, no pregunta. */
+async function askTarget(view: PlayerView, who: (id: string) => string): Promise<string | undefined> {
+  const targets = validTargets(view);
+  if (targets.length <= 1) return targets[0];
+  const options = targets.map((id, i) => `[${i + 1}] ${who(id)}`).join('  ');
+  const answer = Number((await rl.question(`¿Contra quién? ${options}: `)).trim());
+  return targets[answer - 1];
 }
 
 async function lobby(player: Player): Promise<void> {
@@ -39,7 +63,7 @@ async function lobby(player: Player): Promise<void> {
     await player.api.setReady(room.id, true);
   } else {
     await player.api.enqueue();
-    console.log('En la cola; la partida empieza sola cuando haya jugadores (prueba `pnpm bot --bots 3`).');
+    console.log('En la cola; la partida empieza sola cuando haya jugadores (prueba `pnpm bot --bots 2`).');
   }
 }
 
@@ -72,9 +96,16 @@ async function askCard(view: PlayerView): Promise<void> {
       const hand = socket.view?.you?.hand ?? [];
       const answer = Number((await rl.question('Es tu turno. Carta: ')).trim());
       const card = hand[answer - 1];
-      if (card === undefined) continue;
+      const current = socket.view;
+      if (card === undefined || current === null) continue;
+      if (!isPlayable(current, card)) {
+        console.log('Esa carta no se puede jugar ahora (ya tienes escudo o no hay a quién apuntar).');
+        continue;
+      }
+      const targetId = needsTarget(card) ? await askTarget(current, who) : undefined;
+      if (needsTarget(card) && targetId === undefined) continue;
       try {
-        await socket.playCard(card.id);
+        await socket.playCard(card.id, targetId);
         return;
       } catch (error) {
         console.log(error instanceof RejectedError ? `No se pudo: ${error.message}` : String(error));

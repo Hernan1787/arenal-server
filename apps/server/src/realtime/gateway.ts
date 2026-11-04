@@ -355,7 +355,12 @@ export class RealtimeGateway {
       case 'play_card': {
         const result = await this.deps.store.apply(
           message.matchId,
-          { type: 'play_card', playerId: session.userId, cardId: message.payload.cardId },
+          {
+            type: 'play_card',
+            playerId: session.userId,
+            cardId: message.payload.cardId,
+            ...(message.payload.targetId !== undefined && { targetId: message.payload.targetId }),
+          },
           { moveId: message.id, actorId: session.userId, expectedSeq: message.expectedSeq },
         );
         this.reply(session, message, result);
@@ -430,6 +435,9 @@ export class RealtimeGateway {
       sessions.add(session);
       if (session.isClosed()) return this.removeFromMatch(session);
     }
+    // Si la partida se creó con el jugador ya conectado (cola o sala), nadie había marcado que
+    // está presente: sin esto, al vencer el periodo de gracia caería en abandono jugando.
+    await this.deps.presence.markConnected(session.userId);
     const loaded = await this.deps.store.load(matchId);
     if (loaded === undefined) return;
     session.lastSeq = loaded.row.seq;

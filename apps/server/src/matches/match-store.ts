@@ -1,4 +1,5 @@
 import {
+  completeConfig,
   createMatch,
   decide,
   DEFAULT_CONFIG,
@@ -260,7 +261,8 @@ export class MatchStore {
       [row.id, row.seq],
     );
     const state = replay(
-      createMatch(row.id, row.player_ids, row.config),
+      // Las partidas guardadas antes de las cartas nuevas no tienen esos campos en su configuración.
+      createMatch(row.id, row.player_ids, completeConfig(row.config)),
       rows.map((r) => r.event),
     );
     if (state.version !== row.seq) {

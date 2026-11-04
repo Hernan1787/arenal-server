@@ -1,10 +1,19 @@
 import '@fontsource/jersey-15/400.css';
 import './styles.css';
 
-import { ApiError, ArenalApi, ReconnectingSession, RejectedError, type Room } from '@arenal/client';
-import type { Card, MatchResult, PlayerView } from '@arenal/domain';
+import { ApiError, ArenalApi, cardHelp, cardName, ReconnectingSession, RejectedError, type Room } from '@arenal/client';
+import {
+  DEFAULT_CONFIG,
+  type Card,
+  type CardFace,
+  type MatchResult,
+  type PlayerView,
+  type PublicRules,
+} from '@arenal/domain';
+import { cardFace } from './cards.js';
 import { byId, h, prefersReducedMotion } from './dom.js';
 import { startMagma } from './magma.js';
+import { MAX_BOTS, Practice } from './practice.js';
 import { Table } from './table.js';
 
 const api = new ArenalApi(window.location.origin);
@@ -25,7 +34,21 @@ const state = {
   names: new Map<string, string>(),
   lastView: null as PlayerView | null,
   stopWaiting: null as (() => void) | null,
+  /** Cuántos bots tenía la última partida de práctica (0 si fue contra personas). */
+  practiceBots: 0,
 };
+
+const practice = new Practice(window.location.origin);
+const BOTS_PREF_KEY = 'arenal.bots-por-partida';
+
+function preferredBots(): number {
+  try {
+    const n = Number(localStorage.getItem(BOTS_PREF_KEY));
+    return Number.isInteger(n) && n >= 1 && n <= MAX_BOTS ? n : 2;
+  } catch {
+    return 2;
+  }
+}
 
 const who = (playerId: string): string =>
   playerId === state.me?.id ? 'Tú' : (state.names.get(playerId) ?? `Jugador ${playerId.slice(0, 4)}`);
@@ -35,8 +58,15 @@ const table = new Table({
   onHeat: (heat) => {
     magma.setHeat(heat);
   },
-  onPlay: (card) => {
-    void play(card);
+  onPlay: (card, targetId) => {
+    void play(card, targetId);
+  },
+  onEnd: (result) => {
+    const matchId = state.matchId;
+    // Se deja ver la última erupción antes de tapar la mesa con el resultado.
+    window.setTimeout(() => {
+      if (state.matchId === matchId) showEnd(result);
+    }, 1500);
   },
 });
 
@@ -135,14 +165,7 @@ async function connect(): Promise<void> {
       },
       onEvent: (event, _seq, view) => {
         if (view.matchId !== state.matchId) return;
-        table.event(event, view);
-        // Se deja ver la última erupción antes de tapar la mesa con el resultado.
-        if (event.type === 'MatchEnded') {
-          const { result } = event;
-          window.setTimeout(() => {
-            if (state.matchId === view.matchId) showEnd(result);
-          }, 1800);
-        }
+        table.push(event, view);
       },
       onClose: () => {
         setNet('off', 'Sin conexión');
@@ -201,6 +224,33 @@ function showHome(error?: string): void {
     },
   });
   const message = h('p', { class: 'form-error', attrs: { role: 'alert' }, text: error ?? '' });
+  let bots = preferredBots();
+  const botChoice = h(
+    'div',
+    { class: 'bots', attrs: { role: 'radiogroup', 'aria-label': 'Cuántos bots' } },
+    Array.from({ length: MAX_BOTS }, (_, i) => {
+      const n = i + 1;
+      const option = h('button', {
+        class: 'bots__option',
+        text: String(n),
+        attrs: { type: 'button', role: 'radio', 'aria-checked': String(n === bots), 'aria-label': `${n} bots` },
+        on: {
+          click: () => {
+            bots = n;
+            for (const el of botChoice.querySelectorAll('.bots__option')) {
+              el.setAttribute('aria-checked', String(el === option));
+            }
+            try {
+              localStorage.setItem(BOTS_PREF_KEY, String(n));
+            } catch {
+              // No se recuerda la elección; no pasa nada.
+            }
+          },
+        },
+      });
+      return option;
+    }),
+  );
 
   const withName = (action: () => Promise<void>) => async () => {
     if (!name.reportValidity()) return;
@@ -227,16 +277,25 @@ function showHome(error?: string): void {
       on: {
         submit: (event) => {
           event.preventDefault();
-          void withName(startQueue)();
+          void withName(() => startPractice(bots))();
         },
       },
     },
     [
       h('label', { class: 'field__label', text: 'Tu nombre', attrs: { for: 'name' } }),
       name,
-      h('button', { class: 'btn btn--lava', text: 'Buscar partida', attrs: { type: 'submit' } }),
+      h('div', { class: 'home__practice' }, [
+        h('button', { class: 'btn btn--lava', text: 'Jugar contra bots', attrs: { type: 'submit' } }),
+        h('div', { class: 'bots__wrap' }, [h('span', { class: 'bots__label', text: 'Bots' }), botChoice]),
+      ]),
       h('button', {
         class: 'btn btn--stone',
+        text: 'Buscar partida con personas',
+        attrs: { type: 'button' },
+        on: { click: () => void withName(startQueue)() },
+      }),
+      h('button', {
+        class: 'btn btn--ghost',
         text: 'Crear sala privada',
         attrs: { type: 'button' },
         on: { click: () => void withName(createRoom)() },
@@ -264,18 +323,24 @@ function showHome(error?: string): void {
     ],
   );
 
+  const c = DEFAULT_CONFIG;
   const rules = h('details', { class: 'rules' }, [
     h('summary', { text: 'Cómo se juega' }),
     h('ul', {}, [
       h('li', { text: 'Por turnos, cada quien juega una carta y roba otra.' }),
       h('li', {
-        text: 'Las piedras suben la presión del volcán; Enfriar la baja 3; el sismógrafo te dice, solo a ti, si el límite está cerca.',
+        text: `Cada ronda el volcán tiene un límite secreto entre ${c.limitMin} y ${c.limitMax}. Si tu carta hace que la presión lo pase, hay erupción y pierdes una vida.`,
       }),
       h('li', {
-        text: 'Cada ronda el volcán tiene un límite secreto entre 15 y 25. Si tu carta hace que la presión lo pase, hay erupción y pierdes una vida.',
+        text: `Empiezas con ${c.startingLives} vidas. Gana quien quede en pie. Si en 30 segundos no juegas, el servidor juega por ti.`,
       }),
-      h('li', { text: 'Gana quien quede en pie. Si en 30 segundos no juegas, el servidor juega por ti.' }),
     ]),
+    h('h3', { class: 'rules__title', text: 'Las cartas' }),
+    h(
+      'ul',
+      { class: 'deck-list' },
+      deckSample().map(({ card, count }) => cardRow(card, count, publicRules())),
+    ),
   ]);
 
   show(
@@ -295,7 +360,63 @@ function showHome(error?: string): void {
   if (name.value === '') name.focus();
 }
 
+/** Una carta de cada tipo, con cuántas hay en el mazo. */
+function deckSample(): { card: CardFace; count: number }[] {
+  const d = DEFAULT_CONFIG.deck;
+  return [
+    { card: { kind: 'stone', value: 3 }, count: d.stones[1] + d.stones[2] + d.stones[3] + d.stones[4] },
+    { card: { kind: 'bomb' }, count: d.bomb },
+    { card: { kind: 'quake' }, count: d.quake },
+    { card: { kind: 'cool' }, count: d.cool },
+    { card: { kind: 'rain' }, count: d.rain },
+    { card: { kind: 'seismo' }, count: d.seismo },
+    { card: { kind: 'divert' }, count: d.divert },
+    { card: { kind: 'ash' }, count: d.ash },
+    { card: { kind: 'steal' }, count: d.steal },
+    { card: { kind: 'shield' }, count: d.shield },
+  ];
+}
+
+function publicRules(): PublicRules {
+  const c = DEFAULT_CONFIG;
+  return {
+    startingLives: c.startingLives,
+    handSize: c.handSize,
+    limitMin: c.limitMin,
+    limitMax: c.limitMax,
+    coolAmount: c.coolAmount,
+    rainAmount: c.rainAmount,
+    bombAmount: c.bombAmount,
+    quakeMin: c.quakeMin,
+    quakeMax: c.quakeMax,
+    seismoThreshold: c.seismoThreshold,
+    maxRounds: c.maxRounds,
+  };
+}
+
+function cardRow(card: CardFace, count: number, rules: PublicRules): HTMLLIElement {
+  const help = card.kind === 'stone' ? 'Suben la presión de 1 a 4.' : cardHelp(card, rules);
+  return h('li', { class: 'deck-list__item' }, [
+    cardFace(card, rules, 'card--mini'),
+    h('span', { class: 'deck-list__text' }, [
+      h('span', { class: 'deck-list__name', text: card.kind === 'stone' ? 'Piedras' : cardName(card) }),
+      h('span', { class: 'deck-list__help', text: `${help} Hay ${count}.` }),
+    ]),
+  ]);
+}
+
+async function startPractice(bots: number): Promise<void> {
+  const host = h('section', { class: 'panel waiting' }, [
+    h('h2', { class: 'waiting__title', text: 'Llamando a los bots' }),
+    h('p', { text: `Se arma una sala privada con ${bots} ${bots === 1 ? 'bot' : 'bots'}; la partida empieza sola.` }),
+  ]);
+  show(host, 'queue');
+  state.practiceBots = bots;
+  await practice.start(api, bots);
+}
+
 async function startQueue(): Promise<void> {
+  state.practiceBots = 0;
   await api.enqueue();
   const started = Date.now();
   const seconds = h('span', { text: '0' });
@@ -304,8 +425,8 @@ async function startQueue(): Promise<void> {
       h('h2', { class: 'waiting__title', text: 'Buscando rivales' }),
       h('p', {}, ['Llevas ', seconds, ' s en la cola. La partida empieza sola cuando haya al menos 2 jugadores.']),
       h('p', { class: 'hint' }, [
-        '¿Estás solo? Abre esta página en otra pestaña, o trae bots desde la terminal (en la carpeta del proyecto):',
-        h('code', { class: 'command', text: `pnpm bot --url ${window.location.origin} --bots 3 --games 5` }),
+        '¿Nadie más en línea? Cancela y elige «Jugar contra bots», o abre esta página en otra pestaña. También puedes traer bots desde la terminal (en la carpeta del proyecto):',
+        h('code', { class: 'command', text: `pnpm bot --url ${window.location.origin} --bots 2 --games 5` }),
       ]),
       h('button', {
         class: 'btn btn--ghost',
@@ -477,14 +598,16 @@ function showEnd(result: MatchResult): void {
     title = 'Partida cancelada';
     detail = 'Un administrador terminó la partida.';
   }
+  const bots = state.practiceBots;
   const again = h('button', {
     class: 'btn btn--lava',
-    text: 'Buscar otra partida',
+    text: bots > 0 ? 'Jugar otra vez' : 'Buscar otra partida',
     attrs: { type: 'button' },
     on: {
       click: () => {
-        void startQueue().catch((err: unknown) => {
+        void (bots > 0 ? startPractice(bots) : startQueue()).catch((err: unknown) => {
           toast(problemText(err));
+          showHome();
         });
       },
     },
@@ -523,12 +646,12 @@ function showEnd(result: MatchResult): void {
   again.focus();
 }
 
-async function play(card: Card): Promise<void> {
+async function play(card: Card, targetId?: string): Promise<void> {
   const link = state.link;
   if (link === null) return;
   table.setPending(true);
   try {
-    await link.current.playCard(card.id);
+    await link.current.playCard(card.id, targetId);
   } catch (err) {
     // STALE_STATE: llegó un evento justo antes; la vista ya se actualizó y se puede volver a elegir.
     if (!(err instanceof RejectedError && err.code === 'STALE_STATE')) toast(problemText(err));
@@ -539,8 +662,12 @@ async function play(card: Card): Promise<void> {
 
 document.addEventListener('keydown', (event) => {
   if (document.body.dataset['screen'] !== 'table' || event.target instanceof HTMLInputElement) return;
+  if (event.key === 'Escape') {
+    table.cancel();
+    return;
+  }
   const n = Number(event.key);
-  if (Number.isInteger(n) && n >= 1 && n <= 9) table.playAt(n - 1);
+  if (Number.isInteger(n) && n >= 1 && n <= 9) table.key(n - 1);
 });
 
 // --- Arranque -----------------------------------------------------------------------------------
@@ -558,6 +685,8 @@ if (saved !== null) {
     .then(async (me) => {
       state.me = me;
       await connect();
+      // Si había bots de práctica, vuelven a la partida en curso.
+      if (Practice.hasSaved()) await practice.resume();
     })
     .catch(() => {
       setNet('off', 'Sin conectar');

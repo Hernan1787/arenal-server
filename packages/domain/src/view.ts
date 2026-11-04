@@ -1,5 +1,5 @@
 import type { EliminationReason, GameState, MatchResult, MatchStatus } from './state.js';
-import type { Card, PlayerId } from './types.js';
+import type { Card, CardFace, PlayerId } from './types.js';
 
 export interface PublicPlayer {
   readonly id: PlayerId;
@@ -9,6 +9,8 @@ export interface PublicPlayer {
   readonly handCount: number;
   readonly eliminated: boolean;
   readonly eliminationReason: EliminationReason | null;
+  /** Tiene un Escudo puesto (se ve porque el Escudo se juega boca arriba). */
+  readonly shielded: boolean;
 }
 
 export interface OwnInfo {
@@ -16,6 +18,8 @@ export interface OwnInfo {
   readonly hand: readonly Card[];
   /** Lectura del sismógrafo de esta ronda, si la hubo. Solo la ve quien la pidió. */
   readonly seismo: { readonly near: boolean } | null;
+  /** Lo que vio con Ceniza en esta ronda: de quién y qué carta (sin su ID). */
+  readonly peek: { readonly targetId: PlayerId; readonly card: CardFace } | null;
 }
 
 export interface PublicRules {
@@ -24,6 +28,10 @@ export interface PublicRules {
   readonly limitMin: number;
   readonly limitMax: number;
   readonly coolAmount: number;
+  readonly rainAmount: number;
+  readonly bombAmount: number;
+  readonly quakeMin: number;
+  readonly quakeMax: number;
   readonly seismoThreshold: number;
   readonly maxRounds: number;
 }
@@ -36,6 +44,8 @@ export interface PlayerView {
   readonly round: number;
   readonly turn: number;
   readonly currentPlayer: PlayerId | null;
+  /** Cartas que le quedan por jugar al jugador de turno (2 después de un Desvío). */
+  readonly playsLeft: number;
   readonly pressure: number;
   readonly lastRevealedLimit: number | null;
   readonly drawPileCount: number;
@@ -57,6 +67,7 @@ export function viewFor(state: GameState, viewerId: PlayerId | null): PlayerView
     round: state.round,
     turn: state.turn,
     currentPlayer: state.currentPlayer,
+    playsLeft: state.playsLeft,
     pressure: state.pressure,
     lastRevealedLimit: state.lastRevealedLimit,
     drawPileCount: state.drawPile.length,
@@ -68,6 +79,7 @@ export function viewFor(state: GameState, viewerId: PlayerId | null): PlayerView
       handCount: p.hand.length,
       eliminated: p.eliminated,
       eliminationReason: p.eliminationReason,
+      shielded: p.shielded,
     })),
     you:
       me === undefined
@@ -76,6 +88,8 @@ export function viewFor(state: GameState, viewerId: PlayerId | null): PlayerView
             id: me.id,
             hand: me.hand,
             seismo: me.lastSeismo?.round === state.round ? { near: me.lastSeismo.near } : null,
+            peek:
+              me.lastPeek?.round === state.round ? { targetId: me.lastPeek.targetId, card: me.lastPeek.card } : null,
           },
     rules: {
       startingLives: config.startingLives,
@@ -83,6 +97,10 @@ export function viewFor(state: GameState, viewerId: PlayerId | null): PlayerView
       limitMin: config.limitMin,
       limitMax: config.limitMax,
       coolAmount: config.coolAmount,
+      rainAmount: config.rainAmount,
+      bombAmount: config.bombAmount,
+      quakeMin: config.quakeMin,
+      quakeMax: config.quakeMax,
       seismoThreshold: config.seismoThreshold,
       maxRounds: config.maxRounds,
     },

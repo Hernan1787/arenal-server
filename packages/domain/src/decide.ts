@@ -1,11 +1,11 @@
-import { buildShuffledDeck, defaultCard } from './cards.js';
-import { validateConfig } from './config.js';
+import { buildShuffledDeck, defaultPlay } from './cards.js';
+import { validateConfig, type ArenalConfig } from './config.js';
 import type { DomainEvent } from './events.js';
 import { evolve } from './evolve.js';
 import type { Intent } from './intents.js';
 import { shuffle, type Rng } from './rng.js';
 import { alivePlayers, findPlayer, nextAlivePlayer, type GameState, type MatchResult } from './state.js';
-import { fail, ok, type Card, type PlayerId, type Result } from './types.js';
+import { fail, needsTarget, ok, type Card, type PlayerId, type Result } from './types.js';
 
 export interface DecideContext {
   readonly rng: Rng;
@@ -20,7 +20,7 @@ export function decide(state: GameState, intent: Intent, ctx: DecideContext): Re
     case 'start':
       return start(state, ctx);
     case 'play_card':
-      return playCard(state, intent.playerId, intent.cardId, false, ctx);
+      return playCard(state, intent.playerId, intent.cardId, intent.targetId, false, ctx);
     case 'turn_timeout':
       return turnTimeout(state, intent.playerId, intent.turn, ctx);
     case 'abandon':
@@ -84,6 +84,7 @@ function playCard(
   state: GameState,
   playerId: PlayerId,
   cardId: string,
+  targetId: PlayerId | undefined,
   auto: boolean,
   ctx: DecideContext,
 ): Result<DomainEvent[]> {
@@ -92,26 +93,61 @@ function playCard(
 
   const player = findPlayer(state, playerId);
   const card = player?.hand.find((c) => c.id === cardId);
-  if (card === undefined) return fail('CARD_NOT_IN_HAND', 'Esa carta no está en tu mano');
+  if (player === undefined || card === undefined) return fail('CARD_NOT_IN_HAND', 'Esa carta no está en tu mano');
   if (state.limit === null) return fail('MATCH_NOT_STARTED', 'No hay una ronda en curso');
+
+  const target = targetId === undefined ? undefined : findPlayer(state, targetId);
+  if (needsTarget(card)) {
+    if (targetId === undefined) return fail('TARGET_REQUIRED', 'Esa carta se juega contra un rival: elige a quién');
+    if (target === undefined || target.id === playerId || target.eliminated || target.hand.length === 0) {
+      return fail('INVALID_TARGET', 'Ese jugador no puede ser el objetivo');
+    }
+  } else if (targetId !== undefined) {
+    return fail('INVALID_TARGET', 'Esa carta no se juega contra nadie');
+  }
+  if (card.kind === 'shield' && player.shielded) return fail('SHIELD_ACTIVE', 'Ya tienes un escudo puesto');
 
   const limit = state.limit;
   const rec = new Recorder(state);
-  const pressureAfter = pressureAfterPlaying(state.pressure, card, state.config.coolAmount);
-  rec.emit({ type: 'CardPlayed', playerId, card, pressureAfter, auto });
+  const rolled = card.kind === 'quake' ? ctx.rng.int(state.config.quakeMin, state.config.quakeMax) : undefined;
+  const pressureAfter = pressureAfterPlaying(state.pressure, card, state.config, rolled ?? 0);
+  rec.emit({
+    type: 'CardPlayed',
+    playerId,
+    card,
+    pressureAfter,
+    auto,
+    ...(target !== undefined && { targetId: target.id }),
+    ...(rolled !== undefined && { rolled }),
+  });
 
   if (card.kind === 'seismo') {
     rec.emit({ type: 'SeismoRead', playerId, near: limit - pressureAfter <= state.config.seismoThreshold });
   }
+  if ((card.kind === 'ash' || card.kind === 'steal') && target !== undefined) {
+    // La carta la sortea el servidor: quien juega no elige cuál ve ni cuál se lleva.
+    const pick = target.hand[ctx.rng.int(0, target.hand.length - 1)];
+    if (pick !== undefined) {
+      if (card.kind === 'ash') {
+        rec.emit({ type: 'CardPeeked', playerId, targetId: target.id, card: pick });
+      } else {
+        rec.emit({ type: 'CardStolen', playerId, targetId: target.id, card: pick });
+        // La víctima repone del mazo; el ladrón no roba, porque ya se quedó con una carta.
+        drawCard(rec, target.id, ctx);
+      }
+    }
+  }
 
   const erupted = pressureAfter > limit;
   if (erupted) {
-    const livesLeft = (findPlayer(rec.state, playerId)?.lives ?? 1) - 1;
-    rec.emit({ type: 'Eruption', playerId, limit, livesLeft });
+    const before = findPlayer(rec.state, playerId);
+    const shielded = before?.shielded === true;
+    const livesLeft = (before?.lives ?? 1) - (shielded ? 0 : 1);
+    rec.emit({ type: 'Eruption', playerId, limit, livesLeft, shielded });
     if (livesLeft <= 0) eliminate(rec, playerId, 'lives');
   }
 
-  if (findPlayer(rec.state, playerId)?.eliminated === false) drawCard(rec, playerId, ctx);
+  if (findPlayer(rec.state, playerId)?.eliminated === false && card.kind !== 'steal') drawCard(rec, playerId, ctx);
 
   if (endIfOneLeft(rec)) return ok(rec.events);
 
@@ -122,9 +158,16 @@ function playCard(
       const first = nextAlivePlayer(rec.state, playerId);
       if (first !== null) startRound(rec, first, ctx);
     }
+  } else if (card.kind === 'divert') {
+    // Desvío corta el turno (aunque debiera otra carta) y le pasa dos jugadas al siguiente.
+    const next = nextAlivePlayer(rec.state, playerId);
+    if (next !== null) rec.emit({ type: 'TurnStarted', playerId: next, turn: rec.state.turn + 1, playsLeft: 2 });
+  } else if (rec.state.playsLeft > 1) {
+    // Segunda carta del Desvío: es otro turno, con su propio temporizador.
+    rec.emit({ type: 'TurnStarted', playerId, turn: rec.state.turn + 1, playsLeft: rec.state.playsLeft - 1 });
   } else {
     const next = nextAlivePlayer(rec.state, playerId);
-    if (next !== null) rec.emit({ type: 'TurnStarted', playerId: next, turn: rec.state.turn + 1 });
+    if (next !== null) rec.emit({ type: 'TurnStarted', playerId: next, turn: rec.state.turn + 1, playsLeft: 1 });
   }
   return ok(rec.events);
 }
@@ -133,9 +176,9 @@ function turnTimeout(state: GameState, playerId: PlayerId, turn: number, ctx: De
   if (state.status !== 'playing' || state.turn !== turn || state.currentPlayer !== playerId) {
     return fail('STALE_TIMER', 'El temporizador corresponde a un turno que ya pasó');
   }
-  const card = defaultCard(findPlayer(state, playerId)?.hand ?? []);
-  if (card === undefined) return abandon(state, playerId);
-  return playCard(state, playerId, card.id, true, ctx);
+  const play = defaultPlay(state, playerId);
+  if (play === undefined) return abandon(state, playerId);
+  return playCard(state, playerId, play.cardId, play.targetId, true, ctx);
 }
 
 function abandon(state: GameState, playerId: PlayerId): Result<DomainEvent[]> {
@@ -152,7 +195,7 @@ function abandon(state: GameState, playerId: PlayerId): Result<DomainEvent[]> {
 
   if (hadTurn) {
     const next = nextAlivePlayer(rec.state, playerId);
-    if (next !== null) rec.emit({ type: 'TurnStarted', playerId: next, turn: rec.state.turn + 1 });
+    if (next !== null) rec.emit({ type: 'TurnStarted', playerId: next, turn: rec.state.turn + 1, playsLeft: 1 });
   }
   return ok(rec.events);
 }
@@ -164,13 +207,23 @@ function terminate(state: GameState): Result<DomainEvent[]> {
   return ok([{ type: 'MatchEnded', result: { kind: 'aborted', reason: 'admin' } }]);
 }
 
-function pressureAfterPlaying(pressure: number, card: Card, coolAmount: number): number {
+function pressureAfterPlaying(pressure: number, card: Card, config: ArenalConfig, rolled: number): number {
   switch (card.kind) {
     case 'stone':
       return pressure + card.value;
+    case 'bomb':
+      return pressure + config.bombAmount;
+    case 'quake':
+      return pressure + rolled;
     case 'cool':
-      return Math.max(0, pressure - coolAmount);
+      return Math.max(0, pressure - config.coolAmount);
+    case 'rain':
+      return Math.max(0, pressure - config.rainAmount);
     case 'seismo':
+    case 'divert':
+    case 'ash':
+    case 'steal':
+    case 'shield':
       return pressure;
   }
 }
@@ -186,7 +239,7 @@ function drawCard(rec: Recorder, playerId: PlayerId, ctx: DecideContext): void {
 function startRound(rec: Recorder, firstPlayer: PlayerId, ctx: DecideContext): void {
   const { limitMin, limitMax } = rec.state.config;
   rec.emit({ type: 'RoundStarted', round: rec.state.round + 1, limit: ctx.rng.int(limitMin, limitMax), firstPlayer });
-  rec.emit({ type: 'TurnStarted', playerId: firstPlayer, turn: rec.state.turn + 1 });
+  rec.emit({ type: 'TurnStarted', playerId: firstPlayer, turn: rec.state.turn + 1, playsLeft: 1 });
 }
 
 function eliminate(rec: Recorder, playerId: PlayerId, reason: 'lives' | 'abandon'): void {

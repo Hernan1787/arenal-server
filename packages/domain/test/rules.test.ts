@@ -21,7 +21,7 @@ describe('inicio de partida', () => {
 
     expect(state.status).toBe('playing');
     expect(state.players.map((p) => p.hand.length)).toEqual([4, 4, 4]);
-    expect(state.drawPile).toHaveLength(44 - 12);
+    expect(state.drawPile).toHaveLength(60 - 12);
     expect(state.round).toBe(1);
     expect(state.limit).toBeGreaterThanOrEqual(DEFAULT_CONFIG.limitMin);
     expect(state.limit).toBeLessThanOrEqual(DEFAULT_CONFIG.limitMax);
@@ -33,18 +33,20 @@ describe('inicio de partida', () => {
     expect(state.players.map((p) => p.id)).toEqual(order);
   });
 
-  it('crea 44 cartas con IDs únicos y opacos que no revelan qué carta son', () => {
+  it('crea 60 cartas con IDs únicos y opacos que no revelan qué carta son', () => {
     const initial = createMatch('m1', ['ana', 'beto']);
     const result = decide(initial, { type: 'start' }, { rng: seededRng(1) });
     if (!result.ok) throw new Error(result.error.message);
     const deck = result.value.find((e) => e.type === 'DeckShuffled');
     const cards = deck?.type === 'DeckShuffled' ? deck.cards : [];
 
-    expect(cards).toHaveLength(44);
-    expect(new Set(cards.map((c) => c.id)).size).toBe(44);
+    expect(cards).toHaveLength(60);
+    expect(new Set(cards.map((c) => c.id)).size).toBe(60);
     for (const card of cards) expect(card.id).toMatch(/^c_[0-9a-z]{6}$/);
-    expect(cards.filter((c) => c.kind === 'cool')).toHaveLength(6);
-    expect(cards.filter((c) => c.kind === 'seismo')).toHaveLength(4);
+    const count = (kind: string): number => cards.filter((c) => c.kind === kind).length;
+    expect(count('stone')).toBe(34);
+    expect([count('bomb'), count('quake'), count('cool'), count('rain'), count('seismo')]).toEqual([3, 4, 3, 1, 4]);
+    expect([count('divert'), count('ash'), count('steal'), count('shield')]).toEqual([3, 3, 3, 2]);
   });
 
   it('rechaza menos de 2, más de 5, jugadores repetidos y empezar dos veces', () => {
@@ -118,7 +120,7 @@ describe('jugar una carta', () => {
 
     const { state, events } = act({ ...base, pressure: 14 }, { type: 'play_card', playerId: 'ana', cardId: card.id });
     expect(types(events)).toEqual(['CardPlayed', 'Eruption', 'CardDrawn', 'RoundStarted', 'TurnStarted']);
-    expect(player(state, 'ana').lives).toBe(2);
+    expect(player(state, 'ana').lives).toBe(DEFAULT_CONFIG.startingLives - 1);
     expect(state.lastRevealedLimit).toBe(15);
     expect(state.round).toBe(2);
     expect(state.pressure).toBe(0);
@@ -175,7 +177,7 @@ describe('jugar una carta', () => {
     const win = act({ ...winBase, pressure: 14 }, { type: 'play_card', playerId: 'ana', cardId: card.id });
     expect(win.state.result).toEqual({ kind: 'draw', players: ['beto', 'caro'], reason: 'tied_lives' });
 
-    const leadBase = setupMatch({ hands: hands(), limit: 15, round: 2, config, lives: { caro: 2 } }).state;
+    const leadBase = setupMatch({ hands: hands(), limit: 15, round: 2, config, lives: { caro: 1 } }).state;
     const card2 = player(leadBase, 'ana').hand[0];
     if (card2 === undefined) throw new Error('sin carta');
     const lead = act({ ...leadBase, pressure: 14 }, { type: 'play_card', playerId: 'ana', cardId: card2.id });

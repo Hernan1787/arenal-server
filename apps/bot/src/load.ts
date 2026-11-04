@@ -15,7 +15,7 @@
  */
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { chooseCard, isMyTurn, RejectedError, type RealtimeSession } from '@arenal/client';
+import { choosePlay, isMyTurn, RejectedError, type RealtimeSession } from '@arenal/client';
 import type { PlayerView } from '@arenal/domain';
 import { arg, connect, createPlayers, sleep, startRoomMatch, type Player } from './players.js';
 
@@ -236,10 +236,10 @@ class Table {
       setTimeout(() => {
         const socket = this.sockets.get(player.id);
         const current = socket?.view ?? null;
-        const card = isMyTurn(current) ? chooseCard(current) : undefined;
-        if (socket === undefined || card === undefined || this.stopped) return;
+        const play = isMyTurn(current) ? choosePlay(current) : undefined;
+        if (socket === undefined || play === undefined || this.stopped) return;
         const sentAt = performance.now();
-        socket.playCard(card.id).then(
+        socket.playCard(play.card.id, play.targetId).then(
           (ack) => {
             if (ack.duplicate) this.stats.duplicates += 1;
             this.pending.push({ seq: ack.seq, sentAt });

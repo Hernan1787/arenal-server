@@ -151,8 +151,11 @@ export class RealtimeSession {
     return this.lastSeq;
   }
 
-  /** Juega una carta sobre la versión que conoce el cliente. Resuelve con el `ack`. */
-  playCard(cardId: string, moveId: string = newId()): Promise<Ack> {
+  /**
+   * Juega una carta sobre la versión que conoce el cliente. `targetId` es el rival para Ceniza y
+   * Robo. Resuelve con el `ack`.
+   */
+  playCard(cardId: string, targetId?: string, moveId: string = newId()): Promise<Ack> {
     const view = this.requireView();
     return this.send(moveId, {
       v: PROTOCOL_VERSION,
@@ -160,7 +163,7 @@ export class RealtimeSession {
       id: moveId,
       matchId: view.matchId,
       expectedSeq: this.lastSeq,
-      payload: { cardId },
+      payload: targetId === undefined ? { cardId } : { cardId, targetId },
     });
   }
 

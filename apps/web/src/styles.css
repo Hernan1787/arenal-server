@@ -94,6 +94,19 @@ p {
   animation: flash 650ms ease-out;
 }
 
+.flash--soft {
+  animation: flash-soft 420ms ease-out;
+}
+
+@keyframes flash-soft {
+  0% {
+    opacity: 0.22;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes flash {
   0% {
     opacity: 0.6;
@@ -377,6 +390,95 @@ p {
   font-size: 21px;
 }
 
+.rules__title {
+  margin: 18px 0 0;
+  color: var(--ember);
+  font-size: 24px;
+  font-weight: 400;
+}
+
+.rules .deck-list {
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px 16px;
+}
+
+.rules .deck-list__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-left: 0;
+}
+
+.rules .deck-list__item::before {
+  content: none;
+}
+
+.deck-list__text {
+  display: grid;
+  gap: 2px;
+}
+
+.deck-list__name {
+  color: var(--ember);
+  font-size: 21px;
+}
+
+.deck-list__help {
+  color: var(--mist);
+  font-size: 17px;
+  line-height: 1.15;
+}
+
+/* Elegir cuántos bots: tres botones que se hunden como los demás. */
+.home__practice {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.home__practice > .btn {
+  flex: 1;
+}
+
+.bots__wrap {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+}
+
+.bots__label {
+  color: var(--steam);
+  font-size: 16px;
+}
+
+.bots {
+  display: flex;
+  gap: 4px;
+}
+
+.bots__option {
+  width: 40px;
+  height: 40px;
+  font: inherit;
+  font-size: 24px;
+  color: var(--mist);
+  background: var(--basalt);
+  border: 3px solid var(--ink);
+  border-radius: 6px;
+  box-shadow: 0 3px 0 var(--ink);
+  cursor: pointer;
+}
+
+.bots__option[aria-checked='true'] {
+  color: var(--ink);
+  background: var(--ember);
+}
+
+.bots__option:active {
+  translate: 0 2px;
+  box-shadow: 0 1px 0 var(--ink);
+}
+
 .rules li::before {
   content: '';
   position: absolute;
@@ -554,6 +656,104 @@ p {
   background: var(--steam);
 }
 
+.rival__tag--double {
+  color: var(--mist);
+  background: #7a55d9;
+}
+
+/* «Pensando» con tres puntos que aparecen de a uno. */
+.rival__tag--thinking::after {
+  content: '';
+  display: inline-block;
+  width: 1.4em;
+  text-align: left;
+  animation: dots 1.2s steps(4) infinite;
+}
+
+@keyframes dots {
+  0% {
+    content: '';
+  }
+  25% {
+    content: '.';
+  }
+  50% {
+    content: '..';
+  }
+  75% {
+    content: '...';
+  }
+}
+
+.rival__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shield-badge {
+  width: 18px;
+  height: 20px;
+  fill: #9d8ad0;
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.shield-pop {
+  animation: shield-pop 600ms cubic-bezier(0.3, 1.7, 0.5, 1);
+}
+
+@keyframes shield-pop {
+  40% {
+    box-shadow:
+      0 0 0 5px #9d8ad0,
+      0 4px 0 var(--ink);
+    transform: scale(1.06);
+  }
+}
+
+/* Elegir contra quién se juega Ceniza o Robo. */
+.rivals--picking .rival:not(.rival--pickable) {
+  opacity: 0.5;
+}
+
+.rival--pickable {
+  position: relative;
+  cursor: pointer;
+  box-shadow:
+    0 0 0 3px var(--tide),
+    0 4px 0 var(--ink);
+  animation: pickable 900ms ease-in-out infinite alternate;
+}
+
+.rival--pickable:hover,
+.rival--pickable:focus-visible {
+  transform: translateY(-4px);
+  box-shadow:
+    0 0 0 4px var(--ember),
+    0 8px 0 var(--ink);
+}
+
+@keyframes pickable {
+  to {
+    box-shadow:
+      0 0 0 5px var(--tide),
+      0 4px 0 var(--ink);
+  }
+}
+
+.rival__key {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--ink);
+  background: var(--tide);
+  font: inherit;
+  font-size: 17px;
+}
+
 .table__info {
   grid-area: info;
   align-self: start;
@@ -577,6 +777,10 @@ p {
 
 .info__value--near {
   color: var(--lava);
+}
+
+.info__value--peek {
+  color: #c9c2d9;
 }
 
 .info__value--far {
@@ -741,6 +945,213 @@ p {
   transition: transform 500ms cubic-bezier(0.3, 1.4, 0.5, 1);
 }
 
+.v-surface {
+  fill: #fff1a8;
+  transform-box: view-box;
+  transition: transform 500ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+
+.volcano--empty .v-surface,
+.volcano--empty .v-bubbles {
+  visibility: hidden;
+}
+
+/* Burbujas que suben por el magma hasta la superficie. */
+.v-bubble {
+  fill: #fff1a8;
+  transform-box: view-box;
+  animation: bubble 2.4s ease-in infinite;
+}
+
+.v-bubble--1 {
+  animation-delay: 0.8s;
+  animation-duration: 2.9s;
+}
+
+.v-bubble--2 {
+  animation-delay: 1.6s;
+  animation-duration: 2.1s;
+}
+
+@keyframes bubble {
+  0% {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  90% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(var(--rise, 0px));
+    opacity: 0;
+  }
+}
+
+/* Humo: más espeso cuanto más presión. */
+.v-puff {
+  fill: #d9d0ea;
+  transform-box: fill-box;
+  transform-origin: center;
+  opacity: 0;
+  animation: puff 4.8s ease-out infinite;
+}
+
+.v-puff--1 {
+  animation-delay: 0.8s;
+}
+
+.v-puff--2 {
+  animation-delay: 1.6s;
+}
+
+.v-puff--3 {
+  animation-delay: 2.4s;
+}
+
+.v-puff--4 {
+  animation-delay: 3.2s;
+}
+
+.v-puff--5 {
+  animation-delay: 4s;
+}
+
+/* El humo casi no se ve con el volcán frío y se espesa con la presión. */
+@keyframes puff {
+  0% {
+    transform: translate(0, 0) scale(0.4);
+    opacity: 0;
+  }
+  15% {
+    opacity: calc(var(--heat, 0) * 0.5);
+  }
+  100% {
+    transform: translate(var(--drift, 0px), -120px) scale(3.2);
+    opacity: 0;
+  }
+}
+
+/* En la franja de peligro el volcán retumba; más fuerte cuanto más adentro. */
+.v-body {
+  transform-box: view-box;
+}
+
+.volcano--rumble .v-body {
+  animation: rumble calc(0.5s - var(--danger, 0) * 0.3s) steps(2) infinite;
+}
+
+@keyframes rumble {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(calc(1px + var(--danger, 0) * 3px), calc(var(--danger, 0) * -1.5px));
+  }
+}
+
+.volcano--jolt .v-body {
+  animation: jolt 520ms steps(6);
+}
+
+.volcano--jolt-strong .v-body {
+  animation: jolt 620ms steps(8);
+  --jolt: 2;
+}
+
+@keyframes jolt {
+  20% {
+    transform: translate(calc(-6px * var(--jolt, 1)), calc(2px * var(--jolt, 1)));
+  }
+  40% {
+    transform: translate(calc(6px * var(--jolt, 1)), calc(-3px * var(--jolt, 1)));
+  }
+  60% {
+    transform: translate(calc(-4px * var(--jolt, 1)), 0);
+  }
+  80% {
+    transform: translate(calc(3px * var(--jolt, 1)), 1px);
+  }
+}
+
+/* La erupción en tres tiempos: retumbo (0-0,45 s), columna de lava y ríos por las laderas. */
+.v-column {
+  fill: url(#v-lava);
+  transform-box: fill-box;
+  transform-origin: bottom;
+  transform: scaleY(0);
+  opacity: 0;
+}
+
+.v-flow {
+  fill: none;
+  stroke: #ff7a1f;
+  stroke-width: 12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 320;
+  stroke-dashoffset: 320;
+  opacity: 0;
+}
+
+.volcano--erupting .v-body {
+  animation:
+    jolt 450ms steps(6) 1,
+    rumble 0.12s steps(2) 450ms 8;
+  --jolt: 1.6;
+  --danger: 1;
+}
+
+.volcano--erupting .v-column {
+  animation: column 1500ms cubic-bezier(0.2, 0.9, 0.3, 1) 450ms both;
+}
+
+.volcano--erupting .v-flow {
+  animation: flow 1900ms ease-out 900ms both;
+}
+
+.volcano--erupting .v-glow {
+  opacity: 1 !important;
+}
+
+@keyframes column {
+  0% {
+    transform: scaleY(0);
+    opacity: 1;
+  }
+  25% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  70% {
+    transform: scaleY(0.75);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+}
+
+@keyframes flow {
+  0% {
+    stroke-dashoffset: 320;
+    opacity: 1;
+  }
+  55% {
+    stroke-dashoffset: 0;
+    opacity: 1;
+  }
+  100% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+    stroke: #6d1206;
+  }
+}
+
 .v-last-line {
   stroke: var(--ember);
   stroke-width: 4;
@@ -766,26 +1177,19 @@ p {
   pointer-events: none;
 }
 
+/* La última carta jugada se queda a la vista hasta la siguiente. */
 .card--played {
-  animation: played 1300ms ease-in forwards;
+  animation: played 360ms cubic-bezier(0.3, 1.6, 0.5, 1) both;
 }
 
 @keyframes played {
-  0% {
-    transform: translateY(240px) rotate(-10deg) scale(0.7);
+  from {
+    transform: scale(0.4) rotate(-12deg);
     opacity: 0;
   }
-  22% {
-    transform: translateY(0) rotate(3deg) scale(1.1);
+  to {
+    transform: scale(1) rotate(3deg);
     opacity: 1;
-  }
-  70% {
-    transform: translateY(-6px) rotate(0) scale(1);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-110px) scale(0.15);
-    opacity: 0;
   }
 }
 
@@ -928,6 +1332,15 @@ p {
   font-size: 20px;
 }
 
+.me__shield {
+  justify-self: start;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: var(--mist);
+  background: #5d4a8e;
+  font-size: 17px;
+}
+
 .hand {
   display: flex;
   justify-content: center;
@@ -999,9 +1412,95 @@ p {
   background: var(--jungle);
 }
 
+.card--bomb {
+  background: #ff8a5b;
+}
+
+.card--quake {
+  background: #f2b24a;
+}
+
+.card--rain {
+  background: #8cbcff;
+}
+
+.card--divert {
+  background: #b99cff;
+}
+
+.card--ash {
+  background: #b4aec3;
+}
+
+.card--steal {
+  background: #ffd46b;
+}
+
+.card--shield {
+  background: #9d8ad0;
+}
+
+.card--back {
+  background: repeating-linear-gradient(45deg, var(--lava-deep) 0 8px, var(--rock) 8px 16px);
+}
+
+.card--chosen {
+  translate: 0 -34px !important;
+  rotate: 0deg !important;
+  box-shadow:
+    inset 0 0 0 3px rgb(255 255 255 / 0.45),
+    0 0 0 4px var(--tide),
+    0 12px 0 var(--ink) !important;
+}
+
 .card__effect {
   font-size: 44px;
   line-height: 1;
+}
+
+.card__effect--small {
+  font-size: 30px;
+}
+
+.card__effect--icon .heart {
+  width: 34px;
+  height: 30px;
+}
+
+/* Cartas chicas: en la lista de cartas del inicio y en el aviso de Ceniza. */
+.card--mini {
+  flex: none;
+  width: 64px;
+  height: 88px;
+  margin: 0;
+  padding: 5px;
+  border-width: 3px;
+  border-radius: 8px;
+  box-shadow: 0 3px 0 var(--ink);
+}
+
+.card--mini .card__effect {
+  font-size: 19px;
+}
+
+.card--mini .card__effect--icon .heart {
+  width: 16px;
+  height: 14px;
+}
+
+.card--mini .card__name {
+  display: none;
+}
+
+.callout__card {
+  margin: 4px 0;
+}
+
+/* La carta que vuela al cráter. */
+.card--flying {
+  position: fixed;
+  margin: 0;
+  will-change: transform;
 }
 
 .card__art {
@@ -1050,7 +1549,15 @@ p {
   stroke-width: 3;
 }
 
-.wave {
+.wave,
+.crack,
+.ground,
+.shock,
+.rain-line,
+.divert-arrow,
+.divert-plus,
+.hook,
+.fuse {
   fill: none;
   stroke: var(--ink);
   stroke-width: 4;
@@ -1058,7 +1565,85 @@ p {
   stroke-linecap: round;
 }
 
-/* --- Erupción: temblor y chispas -------------------------------------------------------------- */
+.ground {
+  stroke-width: 3;
+  opacity: 0.6;
+}
+
+.rain-line {
+  stroke: #1d3f7a;
+}
+
+.fuse-spark {
+  fill: #fff1a8;
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.bomb {
+  fill: #2a2236;
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
+.bomb-cap {
+  fill: #4b4060;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.bomb-shine {
+  fill: none;
+  stroke: #8e86a3;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.cloud {
+  fill: #effffd;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.eye {
+  fill: #f0eaf8;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.eye-iris {
+  fill: #6b5f84;
+  stroke: var(--ink);
+  stroke-width: 2.5;
+}
+
+.eye-pupil,
+.ash-dot {
+  fill: var(--ink);
+}
+
+.stolen-card {
+  fill: #fff6d6;
+  stroke: var(--ink);
+  stroke-width: 3;
+}
+
+.shield {
+  fill: #3b2d5c;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+
+.shield-facet {
+  fill: none;
+  stroke: #8f7cc0;
+  stroke-width: 2.5;
+}
+
+/* --- Sacudida de la mesa ---------------------------------------------------------------------- */
 
 .shake {
   animation: shake 520ms steps(8);
@@ -1086,38 +1671,86 @@ p {
   }
 }
 
-.sparks {
+/* --- Capas de efectos ------------------------------------------------------------------------- */
+
+.fx {
   position: fixed;
   inset: 0;
   z-index: 45;
   pointer-events: none;
+  overflow: hidden;
 }
 
-.spark {
+.fx > * {
   position: fixed;
-  left: var(--x0);
-  top: var(--y0);
-  width: var(--size);
-  height: var(--size);
+}
+
+.fx-lava {
   background: var(--ember);
   box-shadow: 0 0 0 3px var(--lava);
-  opacity: 0;
-  animation: spark 1150ms cubic-bezier(0.2, 0.7, 0.4, 1) var(--delay) forwards;
 }
 
-@keyframes spark {
-  0% {
-    transform: translate(0, 0);
-    opacity: 1;
-  }
-  60% {
-    transform: translate(var(--dx), var(--dy));
-    opacity: 1;
-  }
-  100% {
-    transform: translate(var(--dx), calc(var(--dy) + 140px));
-    opacity: 0;
-  }
+.fx-rock {
+  background: #4b4060;
+  box-shadow:
+    inset -3px -3px 0 #2a2236,
+    0 0 0 3px var(--ink);
+}
+
+.fx-obsidian {
+  background: #9d8ad0;
+  box-shadow: 0 0 0 2px var(--ink);
+  rotate: 45deg;
+}
+
+.fx-steam {
+  background: rgb(240 234 248 / 0.75);
+  border-radius: 40%;
+  box-shadow: 0 0 0 3px rgb(179 167 203 / 0.5);
+}
+
+.fx-drop {
+  width: 3px;
+  height: 18px;
+  background: #8cbcff;
+}
+
+.fx-ash {
+  background: #6b6280;
+  border-radius: 30%;
+  box-shadow: 0 0 0 2px rgb(10 7 16 / 0.6);
+}
+
+.fx-float {
+  font-family: var(--font);
+  font-size: 54px;
+  line-height: 1;
+  text-shadow:
+    0 4px 0 var(--ink),
+    0 0 12px rgb(10 7 16 / 0.6);
+}
+
+.fx-float--up {
+  color: var(--ember);
+}
+
+.fx-float--down {
+  color: var(--tide);
+}
+
+.fx-seismo-line {
+  fill: none;
+  stroke: var(--jungle);
+  stroke-width: 4;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.callout--peek .callout__title {
+  color: #e2dcef;
+  text-shadow:
+    0 5px 0 #5d4a8e,
+    0 10px 0 var(--ink);
 }
 
 /* --- Fin de la partida y avisos -------------------------------------------------------------- */

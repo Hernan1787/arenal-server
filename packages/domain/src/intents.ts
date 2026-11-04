@@ -8,7 +8,13 @@ import type { CardId, PlayerId } from './types.js';
  */
 export type Intent =
   | { readonly type: 'start' }
-  | { readonly type: 'play_card'; readonly playerId: PlayerId; readonly cardId: CardId }
+  | {
+      readonly type: 'play_card';
+      readonly playerId: PlayerId;
+      readonly cardId: CardId;
+      /** Contra quién se juega la carta (solo Ceniza y Robo). */
+      readonly targetId?: PlayerId;
+    }
   | { readonly type: 'turn_timeout'; readonly playerId: PlayerId; readonly turn: number }
   | { readonly type: 'abandon'; readonly playerId: PlayerId }
   | { readonly type: 'terminate' };

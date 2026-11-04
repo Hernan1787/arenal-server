@@ -42,8 +42,17 @@ export class Presence {
       .zRemRangeByScore(ALL, '-inf', now)
       .zAdd(ALL, { score: expires, value: this.member(userId, connectionId) })
       .exec();
-    await this.deps.db.query('UPDATE match_players SET disconnected_at = NULL WHERE user_id = $1 AND active', [userId]);
+    await this.markConnected(userId);
     return Number(count);
+  }
+
+  /**
+   * El usuario tiene una conexión enganchada a su partida: deja de correr el periodo de gracia.
+   * Se llama al conectarse y también al asignarle una partida estando ya conectado (la partida
+   * nace con todos como desconectados, porque no se sabe quién llegará a conectarse).
+   */
+  async markConnected(userId: string): Promise<void> {
+    await this.deps.db.query('UPDATE match_players SET disconnected_at = NULL WHERE user_id = $1 AND active', [userId]);
   }
 
   /** Renueva la conexión (en cada pong). */

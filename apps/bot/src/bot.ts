@@ -1,20 +1,23 @@
 /**
  * Bots que juegan solos por la cola de emparejamiento.
  *
- *   pnpm bot --url http://localhost:8080 --bots 4 --games 3 --think 300
+ *   pnpm bot --url http://localhost:8080 --bots 3 --games 3 --think 2000
  *
  * Cada bot se registra, abre su WebSocket, entra a la cola y juega con una estrategia simple
- * (ver @arenal/client). Al terminar una partida vuelve a la cola hasta jugar `--games`. Si su
+ * (ver @arenal/client). Antes de cada jugada «piensa» `--think` milisegundos, más o menos la mitad
+ * al azar, para que se pueda seguir la partida. Al terminar una partida vuelve a la cola hasta jugar `--games`. Si su
  * réplica se apaga, reconecta y sigue la misma partida.
  */
-import { chooseCard, isMyTurn, RejectedError, type ReconnectingSession } from '@arenal/client';
+import { choosePlay, isMyTurn, RejectedError, type ReconnectingSession } from '@arenal/client';
 import type { PlayerView } from '@arenal/domain';
 import { arg, connectResilient, createPlayers, sleep, type Player } from './players.js';
 
 const url = arg('url', 'http://localhost:8080');
-const bots = Number(arg('bots', '4'));
+const bots = Number(arg('bots', '3'));
 const games = Number(arg('games', '1'));
-const thinkMs = Number(arg('think', '300'));
+const thinkMs = Number(arg('think', '2000'));
+/** Entre la mitad y una vez y media de `--think`: así no juegan todos al mismo ritmo. */
+const thinkTime = (): number => thinkMs * (0.5 + Math.random());
 
 interface Stats {
   played: number;
@@ -49,9 +52,9 @@ async function runBot(player: Player): Promise<Stats> {
     timer = setTimeout(() => {
       const socket = conn.link?.current;
       const current = socket?.view ?? null;
-      const card = isMyTurn(current) ? chooseCard(current) : undefined;
-      if (socket === undefined || card === undefined) return;
-      socket.playCard(card.id).then(
+      const play = isMyTurn(current) ? choosePlay(current) : undefined;
+      if (socket === undefined || play === undefined) return;
+      socket.playCard(play.card.id, play.targetId).then(
         () => {
           stats.moves += 1;
         },
@@ -67,7 +70,7 @@ async function runBot(player: Player): Promise<Stats> {
           }
         },
       );
-    }, thinkMs);
+    }, thinkTime());
   };
 
   const link = await connectResilient(
