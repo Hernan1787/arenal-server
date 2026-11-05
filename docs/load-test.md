@@ -102,6 +102,32 @@ Con la caché, entre 50 y 200 partidas:
 - **Postgres:** es el cuello de botella. Cada jugada es una transacción con bloqueo de fila, 3 o 4 escrituras y un
   commit. En Azure, el B1ms con créditos de CPU es lo primero que hay que medir y lo primero que habría que subir.
 
+### Con las cartas nuevas ([ADR 0013](adr/0013-cartas-nuevas-y-bots-de-practica.md))
+
+Las cartas nuevas cambian la carga: hay eventos de más (Ceniza, Robo, el segundo turno del Desvío) y las partidas
+son más cortas (2 vidas, límite entre 12 y 20), así que cada mesa arma partidas nuevas más seguido. Para medir solo
+ese cambio se corrieron las dos versiones el mismo día, en la misma máquina (2 vCPU y 8 GB), cada una con una base
+vacía, y con la misma rampa.
+
+| Partidas | Jugadas/s antes | Jugadas/s después | p95 antes | p95 después | CPU Postgres antes | CPU Postgres después |
+| -------: | --------------: | ----------------: | --------: | ----------: | -----------------: | -------------------: |
+|       50 |             191 |               188 |     15 ms |       22 ms |               23 % |                 28 % |
+|      100 |             374 |               366 |     21 ms |       32 ms |               47 % |                 53 % |
+|      200 |             629 |               559 |     95 ms |      127 ms |               78 % |                 80 % |
+|  **300** |             638 |               579 |    250 ms |      262 ms |               79 % |                 80 % |
+|      400 |             620 |               556 |    399 ms |      400 ms |               80 % |                 78 % |
+
+- **El punto de quiebre no cambia:** 300 partidas simultáneas en las dos. Con 200, las dos cumplen p95 < 200 ms.
+- **El techo baja un 10 %** (de unas 635 a unas 570 jugadas por segundo), con Postgres igual de ocupado: cada jugada
+  le cuesta un poco más a la base.
+- Ninguna de las dos perdió jugadas ni tuvo huecos o errores.
+
+Ese día la máquina rindió menos que en la corrida de octubre: la versión anterior llegó a unas 635 jugadas por
+segundo, contra las 950 de la tabla de arriba. Por eso la comparación se hizo con las dos versiones en la misma
+máquina. Los números de octubre siguen siendo los de la optimización. Las corridas están en
+[`cartas-nuevas-antes.json`](load-results/cartas-nuevas-antes.json) y
+[`cartas-nuevas-despues.json`](load-results/cartas-nuevas-despues.json).
+
 ## Lo que falta medir en Azure
 
 - La misma rampa contra dev, con 2 réplicas, para ver el efecto de la red entre servicios y de la caché con el

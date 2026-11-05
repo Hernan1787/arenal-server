@@ -14,3 +14,6 @@ load/results/*.json
 .DS_Store
 .vscode/*
 !.vscode/extensions.json
+
+# Volcado de Redis si se levanta Redis desde la carpeta del repo
+dump.rdb
