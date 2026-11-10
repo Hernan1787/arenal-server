@@ -162,8 +162,35 @@ Azure Monitor.
 **La optimización:** la regla de escala pasa a 50 conexiones por réplica, y se agrega otra que escala si la CPU
 pasa del 60 %. Las réplicas se agregan solo con carga, así que el costo en reposo no cambia.
 
-## Lo que falta medir en Azure
+**Después: 50 conexiones por réplica y regla de CPU al 60 %** (misma rampa, 60 s por escalón)
 
-- La misma rampa contra dev, con 2 réplicas, para ver el efecto de la red entre servicios y de la caché con el
-  tráfico repartido (la proporción de aciertos sale en la métrica `arenal.state.loads`).
-- CPU y memoria por réplica en Container Apps, y CPU y créditos del B1ms en Postgres.
+| Partidas | Jugadas/s |    p50 |    p95 | Errores | Réplicas | CPU Postgres (máx.) |
+| -------: | --------: | -----: | -----: | ------: | -------: | ------------------: |
+|       25 |        85 |  26 ms |  52 ms |       0 |        1 |                30 % |
+|   **50** |       164 |  31 ms |  92 ms |       0 |    1 → 2 |                49 % |
+|       75 |       199 |  55 ms | 379 ms |       0 |        2 |                50 % |
+|      100 |       198 | 129 ms | 556 ms |       0 |        2 |                56 % |
+|      150 |       187 | 518 ms | 747 ms |       0 |        2 |                56 % |
+
+**La optimización en Azure, en números**
+
+|                              | Antes       | Después     | Cambio |
+| ---------------------------- | ----------- | ----------- | -----: |
+| Réplicas con carga           | 1           | 2           |        |
+| Cumple p95 < 200 ms hasta    | 25 partidas | 50 partidas |     ×2 |
+| Punto de quiebre             | 50 partidas | 75 partidas |  +50 % |
+| p95 con 50 partidas          | 461 ms      | 92 ms       |  −80 % |
+| Techo de jugadas por segundo | 112         | 198         |  +77 % |
+
+- La segunda réplica aparece en el escalón de 50, menos de un minuto después de que sube la carga.
+- Con 75 partidas las dos réplicas usan casi todo su cuarto de núcleo: dev llega a su máximo de 2 réplicas, y ese
+  es el nuevo límite. Producción puede escalar hasta 4.
+- Postgres sube hasta el 56 % y no gasta créditos de CPU. Con más réplicas, sería el siguiente cuello de botella.
+- En ninguna de las dos corridas se perdieron ni se duplicaron jugadas.
+
+Corridas: _Actions → Prueba de carga_, 42896466060 (antes) y 42901237717 (después).
+
+## Lo que queda abierto
+
+- Repetir la rampa contra producción (hasta 4 réplicas) no se hizo para no cargar el ambiente en uso.
+- Réplicas de 0.5 vCPU subirían el techo por réplica, pero duplican el costo de las 2 réplicas fijas de producción.
