@@ -1,0 +1,110 @@
+name: Prueba de carga
+
+# La rampa de docs/load-test.md contra dev en Azure, desde un runner de GitHub (en EE. UU., cerca de
+# North Central US). Al final lee de Azure Monitor la CPU y la memoria de las réplicas y la CPU de
+# Postgres en esos mismos minutos. Los resultados quedan en el resumen de la corrida y como
+# artefacto.
+on:
+  workflow_dispatch:
+    inputs:
+      ramp:
+        description: Partidas simultáneas por escalón
+        default: '25,50,100,150,200'
+      duration:
+        description: Segundos por escalón
+        default: '45'
+      think:
+        description: Pausa entre jugadas (ms)
+        default: '250'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: carga
+  cancel-in-progress: false
+
+jobs:
+  carga:
+    name: Rampa contra dev
+    runs-on: ubuntu-latest
+    environment: dev
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Despertar dev
+        id: dev
+        run: |
+          fqdn=$(az containerapp show -g rg-arenal-dev -n ca-arenal-dev --query properties.configuration.ingress.fqdn -o tsv)
+          url="https://$fqdn"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          # Dev escala a cero: la primera petición lo despierta.
+          for i in $(seq 1 60); do
+            if curl -fsS "$url/health/ready" > /dev/null; then echo "listo: $url"; exit 0; fi
+            sleep 5
+          done
+          echo "dev no respondió" && exit 1
+
+      - name: Rampa
+        env:
+          URL: ${{ steps.dev.outputs.url }}
+          RAMP: ${{ inputs.ramp }}
+          DURATION: ${{ inputs.duration }}
+          THINK: ${{ inputs.think }}
+        run: |
+          date -u +%Y-%m-%dT%H:%M:%SZ > inicio.txt
+          pnpm load --url "$URL" --ramp "$RAMP" --duration "$DURATION" --think "$THINK" --label azure-dev | tee carga.log
+          date -u +%Y-%m-%dT%H:%M:%SZ > fin.txt
+          {
+            echo '## Prueba de carga contra dev'
+            echo
+            echo '```'
+            grep -E '▶|jugadas|quiebre' carga.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Métricas de Azure Monitor
+        if: always()
+        run: |
+          # Azure Monitor tarda unos minutos en tener los datos del último minuto.
+          sleep 180
+          start=$(cat inicio.txt); end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          app=$(az containerapp show -g rg-arenal-dev -n ca-arenal-dev --query id -o tsv)
+          pg=$(az postgres flexible-server list -g rg-arenal-dev --query "[0].id" -o tsv)
+          az monitor metrics list --resource "$app" --metrics UsageNanoCores WorkingSetBytes Replicas \
+            --interval PT1M --aggregation Average Maximum --start-time "$start" --end-time "$end" -o json > metricas-app.json || true
+          az monitor metrics list --resource "$pg" --metrics cpu_percent memory_percent active_connections cpu_credits_remaining \
+            --interval PT1M --aggregation Average Maximum --start-time "$start" --end-time "$end" -o json > metricas-postgres.json || true
+          tabla() {
+            jq -r '.value[] | .name.value as $m | .timeseries[]?.data[] | select(.maximum != null) | "\(.timeStamp[11:16]) \($m) prom=\(.average|floor) max=\(.maximum|floor)"' "$1" | sort
+          }
+          {
+            echo '## Azure Monitor (por minuto)'
+            echo
+            echo '```'
+            tabla metricas-app.json || true
+            tabla metricas-postgres.json || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: carga-azure-dev
+          path: |
+            load/results/*.json
+            carga.log
+            metricas-*.json
