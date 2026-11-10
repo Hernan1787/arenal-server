@@ -138,6 +138,30 @@ deja todo en el resumen de la corrida y como artefacto.
 Dev tiene los límites de peticiones muy altos (`relaxedRateLimits` en `infra/dev.bicepparam`) porque todos los
 usuarios de prueba vienen de una sola IP. Producción conserva los límites normales.
 
+### Resultados en Azure
+
+Dev con réplicas de 0.25 vCPU y 0.5 GiB (máximo 2), Postgres B1ms y el generador en un runner de GitHub. Rampa
+de 45 s por escalón con 250 ms de pausa. Cifras de la corrida del 10 de noviembre; la CPU y las réplicas son de
+Azure Monitor.
+
+**Antes: escalar con 200 conexiones por réplica**
+
+| Partidas | Jugadas/s |    p50 |     p95 | Errores | Réplicas | CPU de la réplica | CPU Postgres |
+| -------: | --------: | -----: | ------: | ------: | -------: | ----------------: | -----------: |
+|   **25** |        82 |  36 ms |   66 ms |       0 |        1 |        ~0.19 vCPU |         16 % |
+|       50 |       112 |  53 ms |  461 ms |       0 |        1 |    0.22–0.29 vCPU |         26 % |
+|      100 |       105 | 675 ms |  763 ms |       0 |        1 |    0.22–0.29 vCPU |         25 % |
+|      200 |        96 | 904 ms | 1665 ms |       0 |        1 |    0.22–0.29 vCPU |         28 % |
+
+- Cumple p95 < 200 ms hasta **25 partidas**; el **punto de quiebre es 50**.
+- No se perdió ni se duplicó ninguna jugada, y no hubo errores ni huecos en ningún escalón.
+- **El cuello de botella es la CPU de la réplica**: usa todo su cuarto de núcleo, y el techo queda en unas 110
+  jugadas por segundo. Postgres no pasa del 34 % y no gasta créditos.
+- **Nunca se agregó la segunda réplica**: la regla pedía 200 conexiones por réplica y la CPU se acaba con unas 100.
+
+**La optimización:** la regla de escala pasa a 50 conexiones por réplica, y se agrega otra que escala si la CPU
+pasa del 60 %. Las réplicas se agregan solo con carga, así que el costo en reposo no cambia.
+
 ## Lo que falta medir en Azure
 
 - La misma rampa contra dev, con 2 réplicas, para ver el efecto de la red entre servicios y de la caché con el
