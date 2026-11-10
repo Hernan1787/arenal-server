@@ -43,6 +43,8 @@ param appVersion string = ''
 param allowedOrigins string = ''
 param minReplicas int = 0
 param maxReplicas int = 3
+@description('Límites de peticiones muy altos para la prueba de carga (solo dev)')
+param relaxedRateLimits bool = false
 
 var tags = {
   proyecto: 'arenal'
@@ -116,6 +118,7 @@ module app 'modules/app.bicep' = if (deployApp) {
     allowedOrigins: allowedOrigins
     minReplicas: minReplicas
     maxReplicas: maxReplicas
+    relaxedRateLimits: relaxedRateLimits
   }
 }
 

@@ -39,6 +39,18 @@ param minReplicas int
 @minValue(1)
 param maxReplicas int
 
+@description('Límites de peticiones muy altos, para la prueba de carga desde una sola IP. Solo en dev.')
+param relaxedRateLimits bool = false
+
+// Con un solo generador de carga, todos los usuarios de prueba vienen de la misma IP.
+var loadTestEnv = relaxedRateLimits
+  ? [
+      { name: 'RATE_LIMIT_AUTH_PER_MINUTE', value: '100000' }
+      { name: 'RATE_LIMIT_TICKETS_PER_MINUTE', value: '100000' }
+      { name: 'RATE_LIMIT_USER_PER_MINUTE', value: '100000' }
+    ]
+  : []
+
 var appName = 'ca-arenal-${environmentName}'
 var publicUrl = 'https://${appName}.${containerEnvDomain}'
 
@@ -71,7 +83,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
           name: 'server'
           image: image
           resources: { cpu: json('0.25'), memory: '0.5Gi' }
-          env: [
+          env: concat([
             { name: 'NODE_ENV', value: 'production' }
             { name: 'PORT', value: '8080' }
             { name: 'APP_VERSION', value: appVersion }
@@ -94,7 +106,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
             { name: 'JWT_PRIVATE_KEY_SECRET_URI', value: '${vaultUri}secrets/jwt-private-key' }
             // Con la ingesta local desactivada, esta cadena no sirve sin un token de Entra ID.
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsightsConnectionString }
-          ]
+          ], loadTestEnv)
           probes: [
             {
               type: 'Startup'

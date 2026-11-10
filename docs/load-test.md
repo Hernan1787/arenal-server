@@ -128,6 +128,16 @@ máquina. Los números de octubre siguen siendo los de la optimización. Las cor
 [`cartas-nuevas-antes.json`](load-results/cartas-nuevas-antes.json) y
 [`cartas-nuevas-despues.json`](load-results/cartas-nuevas-despues.json).
 
+## En Azure
+
+La misma rampa corre contra dev desde GitHub Actions: _Actions → Prueba de carga → Run workflow_. El generador es
+un runner de GitHub en EE. UU., cerca de North Central US, así que la latencia incluye la red real hasta Azure. Al
+terminar, el flujo lee de Azure Monitor la CPU y la memoria de las réplicas y la CPU de Postgres en esos minutos, y
+deja todo en el resumen de la corrida y como artefacto.
+
+Dev tiene los límites de peticiones muy altos (`relaxedRateLimits` en `infra/dev.bicepparam`) porque todos los
+usuarios de prueba vienen de una sola IP. Producción conserva los límites normales.
+
 ## Lo que falta medir en Azure
 
 - La misma rampa contra dev, con 2 réplicas, para ver el efecto de la red entre servicios y de la caché con el

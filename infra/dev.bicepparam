@@ -10,6 +10,9 @@ param monthlyBudget = 35
 param budgetStartDate = '2026-11-01'
 param minReplicas = 0
 param maxReplicas = 2
+// La prueba de carga crea cientos de usuarios desde una sola IP (ver docs/load-test.md).
+// Producción conserva los límites normales.
+param relaxedRateLimits = true
 param deployApp = bool(readEnvironmentVariable('DEPLOY_APP', 'false'))
 param imageTag = readEnvironmentVariable('IMAGE_TAG', '')
 param previousImageTag = readEnvironmentVariable('PREVIOUS_IMAGE_TAG', '')
