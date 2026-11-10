@@ -132,10 +132,17 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
       scale: {
         minReplicas: minReplicas
         maxReplicas: maxReplicas
+        // Medido en Azure (docs/load-test.md): una réplica de 0.25 vCPU se satura con unas 50
+        // partidas (100 conexiones) mientras Postgres va al 30 %. Con 200 conexiones por réplica
+        // nunca se agregaba otra; ahora se escala antes, y también si la CPU pasa del 60 %.
         rules: [
           {
             name: 'conexiones'
-            http: { metadata: { concurrentRequests: '200' } }
+            http: { metadata: { concurrentRequests: '50' } }
+          }
+          {
+            name: 'cpu'
+            custom: { type: 'cpu', metadata: { type: 'Utilization', value: '60' } }
           }
         ]
       }
